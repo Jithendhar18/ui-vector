@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Users,
   Database,
+  TrendingUp,
   Settings,
   Sun,
   Moon,
@@ -30,18 +31,23 @@ import {
 
 const NAV_ITEMS = [
   { to: "/chat", label: "Chat", icon: MessageSquare, roles: ["admin", "developer", "user"] },
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin"] },
-  { to: "/users", label: "Users", icon: Users, roles: ["admin"] },
-  { to: "/ingestion", label: "Ingestion", icon: Database, roles: ["admin", "developer"] },
+  { to: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin"] },
+  { to: "/admin/users", label: "Users", icon: Users, roles: ["admin"] },
+  { to: "/admin/ingestion", label: "Ingestion", icon: Database, roles: ["admin", "developer"] },
+  { to: "/admin/popular", label: "Popular", icon: TrendingUp, roles: ["admin", "developer"] },
   { to: "/settings", label: "Settings", icon: Settings, roles: ["admin", "developer", "user"] },
 ] as const;
 
 const PAGE_TITLES: Record<string, string> = {
   "/chat": "Chat",
+  "/admin/dashboard": "Dashboard",
+  "/admin/users": "Users",
+  "/admin/ingestion": "Ingestion",
+  "/admin/popular": "Popular Questions",
+  "/settings": "Settings",
   "/dashboard": "Dashboard",
   "/users": "Users",
   "/ingestion": "Ingestion",
-  "/settings": "Settings",
 };
 
 function SidebarContent({ collapsed, onCollapse }: { collapsed: boolean; onCollapse?: () => void }) {

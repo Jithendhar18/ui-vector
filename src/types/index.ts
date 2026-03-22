@@ -44,7 +44,7 @@ export interface SourceDocument {
   document_title: string;
   content: string;
   score: number;
-  source_url?: string;
+  source_url: string | null;
   metadata: Record<string, unknown>;
 }
 
@@ -54,6 +54,44 @@ export interface QueryResponse {
   session_id: string;
   trace_id: string | null;
   latency_ms: number;
+}
+
+export interface QueryStreamEvent {
+  node?: string;
+  answer?: string;
+  sources?: SourceDocument[];
+  metadata?: Record<string, unknown>;
+  session_id?: string;
+  latency_ms?: number;
+}
+
+export interface ChatSessionListItem {
+  id: string;
+  title: string | null;
+  message_count: number;
+  last_message_at: string | null;
+  created_at: string;
+}
+
+export interface ChatHistoryMessage {
+  role: "user" | "assistant";
+  content: string;
+  sources: SourceDocument[];
+  created_at: string;
+}
+
+export interface ChatSessionHistory {
+  id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string | null;
+  messages: ChatHistoryMessage[];
+}
+
+export interface FrequentQuestion {
+  query: string;
+  count: number;
+  last_asked_at: string;
 }
 
 export interface IngestRequest {
@@ -156,7 +194,8 @@ export interface ChatSession {
   messages: Message[];
   createdAt: string;
   updatedAt: string;
-  backendSessionId?: string | null;
+  messageCount?: number;
+  lastMessageAt?: string | null;
 }
 
 export interface ApiError {

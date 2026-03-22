@@ -16,10 +16,30 @@ const ERROR_MAP: Record<number, { message: string; retryable: boolean }> = {
   0: { message: "Network error. Check your connection.", retryable: true },
 };
 
+function parseDetail(data: unknown, fallback: string): string {
+  if (!data || typeof data !== "object") return fallback;
+  const detail = (data as { detail?: unknown }).detail;
+  if (!detail) return fallback;
+
+  if (typeof detail === "string") return detail;
+
+  if (Array.isArray(detail)) {
+    const first = detail[0] as { msg?: string } | undefined;
+    if (first?.msg) return first.msg;
+    return fallback;
+  }
+
+  if (typeof detail === "object") {
+    const msg = (detail as { msg?: string }).msg;
+    if (msg) return msg;
+  }
+
+  return fallback;
+}
+
 export function mapApiError(error: AxiosError): ApiError {
   const status = error.response?.status ?? 0;
-  const detail =
-    (error.response?.data as Record<string, string>)?.detail ?? error.message;
+  const detail = parseDetail(error.response?.data, error.message);
   const mapped = ERROR_MAP[status] ?? {
     message: "An unexpected error occurred.",
     retryable: true,

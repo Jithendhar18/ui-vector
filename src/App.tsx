@@ -22,6 +22,7 @@ const ChatPage = lazy(() => import("./pages/ChatPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
 const IngestionPage = lazy(() => import("./pages/IngestionPage"));
+const PopularQuestionsPage = lazy(() => import("./pages/PopularQuestionsPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 
 const queryClient = new QueryClient({
@@ -95,7 +96,7 @@ const App = () => (
                     {/* Admin only */}
                     <Route element={<RoleGuard roles={["admin"]} />}>
                       <Route
-                        path="/dashboard"
+                        path="/admin/dashboard"
                         element={
                           <Suspense fallback={<DashboardSkeleton />}>
                             <DashboardPage />
@@ -103,7 +104,7 @@ const App = () => (
                         }
                       />
                       <Route
-                        path="/users"
+                        path="/admin/users"
                         element={
                           <Suspense fallback={<TableSkeleton />}>
                             <UsersPage />
@@ -115,14 +116,28 @@ const App = () => (
                     {/* Admin + Developer */}
                     <Route element={<RoleGuard roles={["admin", "developer"]} />}>
                       <Route
-                        path="/ingestion"
+                        path="/admin/ingestion"
                         element={
                           <Suspense fallback={<TableSkeleton />}>
                             <IngestionPage />
                           </Suspense>
                         }
                       />
+                      <Route
+                        path="/admin/popular"
+                        element={
+                          <Suspense fallback={<TableSkeleton />}>
+                            <PopularQuestionsPage />
+                          </Suspense>
+                        }
+                      />
                     </Route>
+
+                    {/* Backwards-compatible aliases */}
+                    <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+                    <Route path="/dashboard" element={<Navigate to="/admin/dashboard" replace />} />
+                    <Route path="/users" element={<Navigate to="/admin/users" replace />} />
+                    <Route path="/ingestion" element={<Navigate to="/admin/ingestion" replace />} />
                   </Route>
                 </Route>
 

@@ -1,43 +1,45 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useEffect,
-  useRef,
-} from "react";
-import { queryApi } from "@/lib/query-api";
-import { safeGetJSON, safeSetJSON, safeGetItem } from "@/lib/storage";
-import { mapApiError } from "@/lib/api-error";
-import type { ChatSession, Message, SourceDocument } from "@/types";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AxiosError } from "axios";
+import { queryApi } from "@/lib/query-api";
+import { mapApiError } from "@/lib/api-error";
+import type { ChatSession, ChatSessionHistory, ChatSessionListItem, Message } from "@/types";
 
-const SESSIONS_KEY = "rag_chat_sessions";
-const VERSION_KEY = "rag_sessions_version";
-const MAX_SESSIONS = 50;
+const PAGE_SIZE = 50;
 
-const NODE_LABELS: Record<string, string> = {
-  query_rewrite: "Refining your question...",
-  hybrid_retriever: "Searching documents...",
-  reranker: "Ranking results...",
-  context_compressor: "Preparing context...",
-  llm_reasoning: "Generating answer...",
-  response_validator: "Checking accuracy...",
-};
+function mapHistoryToSession(history: ChatSessionHistory): ChatSession {
+  const messages: Message[] = history.messages.map((message, index) => ({
+    id: `${history.id}-${index}-${message.role}`,
+    role: message.role,
+    content: message.content,
+    sources: message.sources,
+    timestamp: message.created_at,
+    status: "done",
+  }));
 
-function generateId() {
-  return crypto.randomUUID();
+  const lastTimestamp =
+    messages[messages.length - 1]?.timestamp ?? history.updated_at ?? history.created_at;
+
+  return {
+    id: history.id,
+    title: history.title ?? "Untitled conversation",
+    messages,
+    createdAt: history.created_at,
+    updatedAt: lastTimestamp,
+    messageCount: history.messages.length,
+    lastMessageAt: lastTimestamp,
+  };
 }
 
-function truncateTitle(text: string, max = 60): string {
-  const words = text.trim().split(/\s+/);
-  if (words.length <= 5) return text.trim();
-  let result = "";
-  for (const w of words) {
-    if ((result + " " + w).trim().length > max) break;
-    result = (result + " " + w).trim();
-  }
-  return result + "...";
+function mapListItemToSession(item: ChatSessionListItem): ChatSession {
+  return {
+    id: item.id,
+    title: item.title ?? "Untitled conversation",
+    messages: [],
+    createdAt: item.created_at,
+    updatedAt: item.last_message_at ?? item.created_at,
+    messageCount: item.message_count,
+    lastMessageAt: item.last_message_at,
+  };
 }
 
 interface ChatContextValue {
@@ -49,59 +51,128 @@ interface ChatContextValue {
   cancelRequest: () => void;
   createNewSession: () => void;
   setActiveSession: (id: string) => void;
-  deleteSession: (id: string) => void;
+  deleteSession: (id: string) => Promise<void>;
   activeSession: ChatSession | null;
+  reloadSessions: () => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    const version = safeGetItem(VERSION_KEY);
-    if (version !== "1") {
-      safeSetJSON(VERSION_KEY, "1");
-      return [];
-    }
-    return safeGetJSON<ChatSession[]>(SESSIONS_KEY) ?? [];
-  });
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
+  const loadingSessionIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const streamingSupportedRef = useRef(true);
-  const sseFailCountRef = useRef(0);
-  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Persist sessions debounced
-  const persistSessions = useCallback((s: ChatSession[]) => {
-    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
-    persistTimerRef.current = setTimeout(() => {
-      safeSetJSON(SESSIONS_KEY, s);
-      safeSetJSON(VERSION_KEY, "1");
-    }, 300);
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.id === activeSessionId) ?? null,
+    [activeSessionId, sessions]
+  );
+
+  const replaceSession = useCallback((next: ChatSession) => {
+    setSessions((prev) => {
+      const exists = prev.some((session) => session.id === next.id);
+      if (!exists) {
+        return [next, ...prev].sort(
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+      }
+
+      return prev
+        .map((session) => (session.id === next.id ? next : session))
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    });
   }, []);
 
-  useEffect(() => {
-    persistSessions(sessions);
-  }, [sessions, persistSessions]);
+  const loadSessionById = useCallback(
+    async (sessionId: string) => {
+      loadingSessionIdRef.current = sessionId;
+      try {
+        const history = await queryApi.getSession(sessionId);
+        replaceSession(mapHistoryToSession(history));
+      } finally {
+        if (loadingSessionIdRef.current === sessionId) {
+          loadingSessionIdRef.current = null;
+        }
+      }
+    },
+    [replaceSession]
+  );
 
-  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
+  const reloadSessions = useCallback(async () => {
+    const list = await queryApi.listSessions(1, PAGE_SIZE);
+    const mapped = list.map(mapListItemToSession);
+    setSessions((prev) => {
+      const previousById = new Map(prev.map((session) => [session.id, session]));
+      return mapped.map((session) => {
+        const previous = previousById.get(session.id);
+        if (!previous || previous.messages.length === 0) return session;
+        return {
+          ...session,
+          messages: previous.messages,
+        };
+      });
+    });
+
+    if (activeSessionId) {
+      const stillExists = mapped.some((session) => session.id === activeSessionId);
+      if (!stillExists) {
+        setActiveSessionId(null);
+      }
+    }
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    reloadSessions().catch(() => {
+      setSessions([]);
+    });
+  }, [reloadSessions]);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    const current = sessions.find((session) => session.id === activeSessionId);
+    if (!current || current.messages.length === 0) {
+      loadSessionById(activeSessionId).catch(() => {
+        // Keep sidebar list even if the detailed fetch fails.
+      });
+    }
+  }, [activeSessionId, loadSessionById, sessions]);
 
   const createNewSession = useCallback(() => {
-    cancelRequestInternal();
-    setActiveSessionId(null);
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setIsLoading(false);
     setStreamingMessage(null);
+    setActiveSessionId(null);
   }, []);
 
   const setActiveSession = useCallback((id: string) => {
-    cancelRequestInternal();
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setIsLoading(false);
+    setStreamingMessage(null);
     setActiveSessionId(id);
+  }, []);
+
+  const cancelRequest = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setIsLoading(false);
     setStreamingMessage(null);
   }, []);
 
   const deleteSession = useCallback(
-    (id: string) => {
-      setSessions((prev) => prev.filter((s) => s.id !== id));
+    async (id: string) => {
+      await queryApi.deleteSession(id);
+      setSessions((prev) => prev.filter((session) => session.id !== id));
       if (activeSessionId === id) {
         setActiveSessionId(null);
       }
@@ -109,61 +180,45 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [activeSessionId]
   );
 
-  function cancelRequestInternal() {
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
-    setIsLoading(false);
-  }
-
-  const cancelRequest = useCallback(() => {
-    cancelRequestInternal();
-    setStreamingMessage(null);
-  }, []);
-
   const sendMessage = useCallback(
     async (query: string) => {
-      const userMsg: Message = {
-        id: generateId(),
+      const trimmedQuery = query.trim();
+      if (!trimmedQuery || isLoading) return;
+
+      const userMessage: Message = {
+        id: crypto.randomUUID(),
         role: "user",
-        content: query,
+        content: trimmedQuery,
         timestamp: new Date().toISOString(),
         status: "done",
       };
 
-      let currentSessionId = activeSessionId;
-      let currentSession = sessions.find((s) => s.id === currentSessionId);
+      const ephemeralId = activeSessionId ?? `local-${crypto.randomUUID()}`;
+      const existing = sessions.find((session) => session.id === activeSessionId);
 
-      if (!currentSession) {
-        const newSession: ChatSession = {
-          id: generateId(),
-          title: truncateTitle(query),
-          messages: [userMsg],
+      if (existing) {
+        replaceSession({
+          ...existing,
+          messages: [...existing.messages, userMessage],
+          updatedAt: new Date().toISOString(),
+          messageCount: (existing.messageCount ?? existing.messages.length) + 1,
+          lastMessageAt: new Date().toISOString(),
+        });
+      } else {
+        replaceSession({
+          id: ephemeralId,
+          title: trimmedQuery.slice(0, 60),
+          messages: [userMessage],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-        };
-        currentSessionId = newSession.id;
-        currentSession = newSession;
-        setSessions((prev) => [newSession, ...prev].slice(0, MAX_SESSIONS));
-        setActiveSessionId(newSession.id);
-      } else {
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === currentSessionId
-              ? { ...s, messages: [...s.messages, userMsg], updatedAt: new Date().toISOString() }
-              : s
-          )
-        );
+          messageCount: 1,
+          lastMessageAt: new Date().toISOString(),
+        });
+        setActiveSessionId(ephemeralId);
       }
 
-      setIsLoading(true);
-      const controller = new AbortController();
-      abortRef.current = controller;
-
-      const aiMsgId = generateId();
       setStreamingMessage({
-        id: aiMsgId,
+        id: crypto.randomUUID(),
         role: "assistant",
         content: "",
         timestamp: new Date().toISOString(),
@@ -171,175 +226,87 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         statusLabel: "Thinking...",
       });
 
-      const backendSessionId = currentSession?.backendSessionId;
-      const startTime = Date.now();
+      setIsLoading(true);
+      const controller = new AbortController();
+      abortRef.current = controller;
 
       try {
-        let answer = "";
-        let sources: SourceDocument[] = [];
-        let sessionIdFromBackend: string | undefined;
-        let latency_ms = 0;
-        let success = false;
+        const response = await queryApi.query(trimmedQuery, 5, activeSessionId ?? undefined);
+        if (controller.signal.aborted) return;
 
-        // Try SSE first
-        if (streamingSupportedRef.current && sseFailCountRef.current < 2) {
-          try {
-            const response = await Promise.race([
-              queryApi.stream(query, 5, backendSessionId ?? undefined, controller.signal),
-              new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error("SSE_TIMEOUT")), 15000)
-              ),
-            ]);
+        const assistantMessage: Message = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: response.answer,
+          sources: response.sources,
+          latency_ms: response.latency_ms,
+          timestamp: new Date().toISOString(),
+          status: "done",
+        };
 
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            if (!response.body) throw new Error("No body");
+        const persistedSession = await queryApi.getSession(response.session_id);
+        const mapped = mapHistoryToSession(persistedSession);
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
+        const hasAssistant = mapped.messages.some(
+          (message) => message.role === "assistant" && message.content === assistantMessage.content
+        );
 
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-              const events = buffer.split("\n\n");
-              buffer = events.pop() ?? "";
-
-              for (const event of events) {
-                for (const line of event.split("\n")) {
-                  if (!line.startsWith("data: ")) continue;
-                  const data = line.slice(6).trim();
-                  if (data === "[DONE]") {
-                    success = true;
-                    break;
-                  }
-                  try {
-                    const parsed = JSON.parse(data);
-                    if (parsed.error) {
-                      throw new Error(parsed.error);
-                    }
-                    if (parsed.node && NODE_LABELS[parsed.node]) {
-                      setStreamingMessage((prev) =>
-                        prev ? { ...prev, statusLabel: NODE_LABELS[parsed.node] } : prev
-                      );
-                    }
-                    // Extract answer from llm_reasoning as fallback
-                    if (parsed.node === "llm_reasoning" && parsed.answer && !answer) {
-                      answer = parsed.answer;
-                      sources = parsed.sources ?? [];
-                    }
-                    if (parsed.node === "response" && parsed.answer) {
-                      answer = parsed.answer;
-                      sources = parsed.sources ?? [];
-                      sessionIdFromBackend = parsed.session_id;
-                      latency_ms = parsed.latency_ms ?? Date.now() - startTime;
-                      success = true;
-                    }
-                    // Handle response node even if answer is empty (fallback)
-                    if (parsed.node === "response" && !answer) {
-                      sessionIdFromBackend = parsed.session_id;
-                      latency_ms = parsed.latency_ms ?? Date.now() - startTime;
-                      success = true;
-                    }
-                  } catch {
-                    // skip malformed
-                  }
-                }
-                if (success) break;
+        replaceSession(
+          hasAssistant
+            ? mapped
+            : {
+                ...mapped,
+                messages: [...mapped.messages, assistantMessage],
+                updatedAt: new Date().toISOString(),
               }
-              if (success) break;
-            }
-            sseFailCountRef.current = 0;
-          } catch (sseErr) {
-            if (controller.signal.aborted) throw sseErr;
-            sseFailCountRef.current++;
-            if (sseFailCountRef.current >= 2) streamingSupportedRef.current = false;
-          }
-        }
+        );
 
-        // Fallback to standard POST
-        if (!success && !controller.signal.aborted) {
-          setStreamingMessage((prev) =>
-            prev ? { ...prev, statusLabel: "Thinking..." } : prev
-          );
-          const result = await queryApi.query(query, 5, backendSessionId ?? undefined);
-          answer = result.answer;
-          sources = result.sources;
-          sessionIdFromBackend = result.session_id;
-          latency_ms = result.latency_ms;
-          success = true;
+        if (activeSessionId !== response.session_id) {
+          setSessions((prev) => prev.filter((session) => session.id !== ephemeralId));
+          setActiveSessionId(response.session_id);
         }
+      } catch (error) {
+        if (controller.signal.aborted) return;
 
-        if (success) {
-          const aiMsg: Message = {
-            id: aiMsgId,
-            role: "assistant",
-            content: answer,
-            sources,
-            latency_ms,
-            timestamp: new Date().toISOString(),
-            status: "done",
-          };
+        const apiError =
+          error instanceof AxiosError
+            ? mapApiError(error)
+            : {
+                message: "An unexpected error occurred.",
+                detail: "Unexpected error",
+                retryable: true,
+                status: 0,
+              };
 
-          setSessions((prev) =>
-            prev.map((s) =>
-              s.id === currentSessionId
-                ? {
-                    ...s,
-                    messages: [...s.messages, aiMsg],
-                    updatedAt: new Date().toISOString(),
-                    backendSessionId: sessionIdFromBackend ?? s.backendSessionId,
-                  }
-                : s
-            )
-          );
-          setStreamingMessage(null);
-        }
-      } catch (err) {
-        if (controller.signal.aborted) {
-          setStreamingMessage(null);
-          // Add cancelled message
-          const cancelledMsg: Message = {
-            id: aiMsgId,
-            role: "assistant",
-            content: "Request cancelled",
-            timestamp: new Date().toISOString(),
-            status: "cancelled",
-          };
-          setSessions((prev) =>
-            prev.map((s) =>
-              s.id === currentSessionId
-                ? { ...s, messages: [...s.messages, cancelledMsg], updatedAt: new Date().toISOString() }
-                : s
-            )
-          );
-        } else {
-          const apiErr =
-            err instanceof AxiosError
-              ? mapApiError(err)
-              : { message: "An unexpected error occurred.", retryable: true };
-          const errMsg: Message = {
-            id: aiMsgId,
-            role: "error",
-            content: apiErr.message,
-            timestamp: new Date().toISOString(),
-            status: "error",
-          };
-          setSessions((prev) =>
-            prev.map((s) =>
-              s.id === currentSessionId
-                ? { ...s, messages: [...s.messages, errMsg], updatedAt: new Date().toISOString() }
-                : s
-            )
-          );
-          setStreamingMessage(null);
-        }
+        const errorMessage: Message = {
+          id: crypto.randomUUID(),
+          role: "error",
+          content: apiError.message,
+          timestamp: new Date().toISOString(),
+          status: "error",
+        };
+
+        setSessions((prev) =>
+          prev.map((session) =>
+            session.id === ephemeralId
+              ? {
+                  ...session,
+                  messages: [...session.messages, errorMessage],
+                  updatedAt: new Date().toISOString(),
+                }
+              : session
+          )
+        );
       } finally {
         setIsLoading(false);
+        setStreamingMessage(null);
         abortRef.current = null;
+        reloadSessions().catch(() => {
+          // Keep current state when refresh fails.
+        });
       }
     },
-    [activeSessionId, sessions]
+    [activeSessionId, isLoading, reloadSessions, replaceSession, sessions]
   );
 
   return (
@@ -355,6 +322,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setActiveSession,
         deleteSession,
         activeSession,
+        reloadSessions,
       }}
     >
       {children}
@@ -363,7 +331,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useChat() {
-  const ctx = useContext(ChatContext);
-  if (!ctx) throw new Error("useChat must be used within ChatProvider");
-  return ctx;
+  const context = useContext(ChatContext);
+  if (!context) throw new Error("useChat must be used within ChatProvider");
+  return context;
 }

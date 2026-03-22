@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useCallback, memo, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { ChatSession } from "@/types";
 import { useParams, useNavigate } from "react-router-dom";
 import { useChat } from "@/contexts/ChatContext";
+import { queryApi } from "@/lib/query-api";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import rehypeHighlight from "rehype-highlight";
@@ -10,13 +12,13 @@ import {
   Plus,
   ArrowUp,
   Square,
-  Loader2,
   Copy,
   Check,
   ChevronDown,
   ChevronRight,
   Trash2,
   FileText,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -55,26 +57,42 @@ function SourcePanel({ sources }: { sources: SourceDocument[] }) {
 }
 
 function SourceCard({ source }: { source: SourceDocument }) {
-  const [showFull, setShowFull] = useState(false);
   const pct = Math.round(source.score * 100);
   const color = pct >= 80 ? "bg-success" : pct >= 50 ? "bg-warning" : "bg-destructive";
 
   return (
     <div className="rounded-xl bg-secondary px-3 py-2 text-xs">
-      <div className="flex items-start justify-between gap-2">
-        <span className="font-medium truncate text-secondary-foreground">{source.document_title}</span>
+      <div className="flex items-center justify-between gap-2">
+        {source.source_url ? (
+          <a
+            href={source.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-medium truncate text-primary hover:underline"
+          >
+            <span className="truncate">{source.document_title}</span>
+            <ExternalLink className="h-3 w-3 shrink-0" />
+          </a>
+        ) : (
+          <span className="font-medium truncate text-secondary-foreground">{source.document_title}</span>
+        )}
         <span className={`${color} text-[10px] px-1.5 py-0.5 rounded-full text-white shrink-0`}>
           {pct}%
         </span>
       </div>
-      <p
-        className={`mt-1 text-muted-foreground ${showFull ? "" : "line-clamp-3"} cursor-pointer`}
-        onClick={() => setShowFull(!showFull)}
-      >
-        {source.content}
-      </p>
     </div>
   );
+}
+
+function formatSessionTime(value?: string | null): string {
+  if (!value) return "No messages";
+  const date = new Date(value);
+  const diffMinutes = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${Math.floor(diffHours / 24)}d ago`;
 }
 
 // Thinking indicator
@@ -192,29 +210,36 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: Messag
 });
 
 // Suggestion cards
-const SUGGESTIONS = [
-  "How do I configure backups?",
-  "What are the user roles?",
-  "How to install BookStack?",
-  "How does the API work?",
-];
-
-function EmptyState({ onSuggest }: { onSuggest: (q: string) => void }) {
+function EmptyState({
+  onSuggest,
+  suggestions,
+  isSuggestionsLoading,
+}: {
+  onSuggest: (q: string) => void;
+  suggestions: string[];
+  isSuggestionsLoading: boolean;
+}) {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-6 px-4">
       <BookOpen className="h-12 w-12 text-muted-foreground/40" />
       <h2 className="text-2xl font-semibold text-foreground">How can I help you today?</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
-        {SUGGESTIONS.map((s) => (
-          <button
-            key={s}
-            onClick={() => onSuggest(s)}
-            className="rounded-2xl border border-border hover:border-primary/50 bg-card px-4 py-3 text-sm text-left transition-colors duration-200 hover:shadow-sm active:scale-[0.98]"
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+      {isSuggestionsLoading ? (
+        <p className="text-sm text-muted-foreground">Loading popular questions...</p>
+      ) : suggestions.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              onClick={() => onSuggest(s)}
+              className="rounded-2xl border border-border hover:border-primary/50 bg-card px-4 py-3 text-sm text-left transition-colors duration-200 hover:shadow-sm active:scale-[0.98]"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">Start by asking a question about your docs.</p>
+      )}
     </div>
   );
 }
@@ -276,11 +301,16 @@ function SessionList({
                   tabIndex={0}
                   onKeyDown={(e) => e.key === "Enter" && handleSelect(session.id)}
                 >
-                  <span className="flex-1 truncate">{session.title}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate">{session.title}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {session.messageCount ?? session.messages.length} msgs • {formatSessionTime(session.lastMessageAt ?? session.updatedAt)}
+                    </p>
+                  </div>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      deleteSession(session.id);
+                      void deleteSession(session.id);
                     }}
                     className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
                     aria-label="Delete session"
@@ -429,6 +459,16 @@ export default function ChatPage() {
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const [isVoiceListening, setIsVoiceListening] = useState(false);
 
+  const { data: popularQuestions, isLoading: isPopularLoading } = useQuery({
+    queryKey: ["chat-popular-questions"],
+    queryFn: async () => {
+      const result = await queryApi.getPopularQuestions(6);
+      return result.map((item) => item.query).filter(Boolean);
+    },
+    staleTime: 120000,
+    retry: 0,
+  });
+
   // Get the last assistant message for TTS
   const lastAssistantMessage = useMemo(() => {
     const msgs = activeSession?.messages ?? [];
@@ -532,7 +572,11 @@ export default function ChatPage() {
 
         {isEmpty ? (
           <div className="flex-1">
-            <EmptyState onSuggest={(q) => sendMessage(q)} />
+            <EmptyState
+              onSuggest={(q) => sendMessage(q)}
+              suggestions={popularQuestions ?? []}
+              isSuggestionsLoading={isPopularLoading}
+            />
           </div>
         ) : (
           <div
