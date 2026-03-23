@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ingestionApi } from "@/lib/ingestion-api";
 import { mapApiError } from "@/lib/api-error";
@@ -38,11 +38,11 @@ export default function IngestionPage() {
   const [taskId, setTaskId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { data: docs, isLoading: docsLoading } = useQuery({
+  const { data: docs, isLoading: docsLoading, refetch: refetchDocs } = useQuery({
     queryKey: ["documents", page, statusFilter],
     queryFn: () =>
       ingestionApi.getDocuments(page, 20, statusFilter === "all" ? undefined : statusFilter),
-    staleTime: 30000,
+    staleTime: 5000,
   });
 
   const { data: taskStatus } = useQuery({
@@ -57,15 +57,19 @@ export default function IngestionPage() {
   });
 
   // Invalidate docs when task completes
-  if (taskStatus?.status === "SUCCESS" || taskStatus?.status === "FAILURE") {
-    queryClient.invalidateQueries({ queryKey: ["documents"] });
-  }
+  useEffect(() => {
+    if (taskStatus?.status === "SUCCESS" || taskStatus?.status === "FAILURE") {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+    }
+  }, [taskStatus?.status, queryClient]);
 
   const ingestMutation = useMutation({
     mutationFn: () => ingestionApi.ingest("pages", undefined, false),
     onSuccess: (data) => {
       setTaskId(data.task_id);
       toast.success(`Ingestion started (task: ${data.task_id.slice(0, 8)}...)`);
+      // Refresh document list
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
     },
     onError: (err) => {
       const apiErr = err instanceof AxiosError ? mapApiError(err) : null;

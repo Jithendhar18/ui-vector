@@ -78,22 +78,33 @@ export const queryApi = {
     const decoder = new TextDecoder();
     let buffer = "";
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        if (signal?.aborted) return;
 
-      buffer += decoder.decode(value, { stream: true });
-      const chunks = buffer.split("\n\n");
-      buffer = chunks.pop() ?? "";
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      for (const chunk of chunks) {
-        for (const line of chunk.split("\n")) {
-          if (!line.startsWith("data: ")) continue;
-          const raw = line.slice(6).trim();
-          if (!raw || raw === "[DONE]") return;
-          yield JSON.parse(raw) as QueryStreamEvent;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+
+        for (const chunk of chunks) {
+          if (signal?.aborted) return;
+          for (const line of chunk.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim();
+            if (!raw || raw === "[DONE]") return;
+            try {
+              yield JSON.parse(raw) as QueryStreamEvent;
+            } catch {
+              yield { error: "Failed to parse server response" };
+            }
+          }
         }
       }
+    } finally {
+      reader.releaseLock();
     }
   },
 };

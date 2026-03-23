@@ -21,17 +21,26 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import type { Message, SourceDocument } from "@/types";
 import VoiceInput from "@/components/VoiceInput";
 import AvatarPanel from "@/components/AvatarPanel";
 import { stopSpeaking } from "@/services/avatarService";
 
-// Source panel
+// Source panel — show top sources as simple links
 function SourcePanel({ sources }: { sources: SourceDocument[] }) {
   const [expanded, setExpanded] = useState(false);
   if (!sources.length) return null;
+
+  // Deduplicate by title (same page can appear from multiple chunks)
+  const seen = new Set<string>();
+  const unique = sources.filter((s) => {
+    const key = s.document_title;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   return (
     <div className="mt-2 border-t border-border pt-2">
@@ -39,16 +48,16 @@ function SourcePanel({ sources }: { sources: SourceDocument[] }) {
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         aria-expanded={expanded}
-        aria-label={`${sources.length} sources`}
+        aria-label={`${unique.length} sources`}
       >
         <FileText className="h-3 w-3" />
-        {sources.length} source{sources.length !== 1 ? "s" : ""}
+        {unique.length} source{unique.length !== 1 ? "s" : ""}
         {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
       </button>
       {expanded && (
-        <div className="mt-2 space-y-2">
-          {sources.map((s) => (
-            <SourceCard key={s.chunk_id} source={s} />
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {unique.map((s) => (
+            <SourceChip key={s.chunk_id} source={s} />
           ))}
         </div>
       )}
@@ -56,31 +65,24 @@ function SourcePanel({ sources }: { sources: SourceDocument[] }) {
   );
 }
 
-function SourceCard({ source }: { source: SourceDocument }) {
-  const pct = Math.round(source.score * 100);
-  const color = pct >= 80 ? "bg-success" : pct >= 50 ? "bg-warning" : "bg-destructive";
-
+function SourceChip({ source }: { source: SourceDocument }) {
+  if (source.source_url) {
+    return (
+      <a
+        href={source.source_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 rounded-lg bg-secondary px-2.5 py-1 text-xs font-medium text-primary hover:bg-secondary/80 transition-colors truncate max-w-[240px]"
+      >
+        <span className="truncate">{source.document_title}</span>
+        <ExternalLink className="h-3 w-3 shrink-0" />
+      </a>
+    );
+  }
   return (
-    <div className="rounded-xl bg-secondary px-3 py-2 text-xs">
-      <div className="flex items-center justify-between gap-2">
-        {source.source_url ? (
-          <a
-            href={source.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 font-medium truncate text-primary hover:underline"
-          >
-            <span className="truncate">{source.document_title}</span>
-            <ExternalLink className="h-3 w-3 shrink-0" />
-          </a>
-        ) : (
-          <span className="font-medium truncate text-secondary-foreground">{source.document_title}</span>
-        )}
-        <span className={`${color} text-[10px] px-1.5 py-0.5 rounded-full text-white shrink-0`}>
-          {pct}%
-        </span>
-      </div>
-    </div>
+    <span className="inline-flex items-center rounded-lg bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground truncate max-w-[240px]">
+      {source.document_title}
+    </span>
   );
 }
 
@@ -540,7 +542,7 @@ export default function ChatPage() {
   }, [isVoiceListening]);
 
   const messages = activeSession?.messages ?? [];
-  const isEmpty = messages.length === 0 && !streamingMessage;
+  const isEmpty = messages.length === 0 && !streamingMessage && !isLoading;
 
   return (
     <div className="flex h-full">
@@ -591,11 +593,15 @@ export default function ChatPage() {
               ))}
 
               {streamingMessage && (
-                <ThinkingIndicator
-                  statusLabel={streamingMessage.statusLabel}
-                  elapsed={elapsed}
-                  onCancel={cancelRequest}
-                />
+                streamingMessage.content ? (
+                  <MessageBubble message={streamingMessage} />
+                ) : (
+                  <ThinkingIndicator
+                    statusLabel={streamingMessage.statusLabel}
+                    elapsed={elapsed}
+                    onCancel={cancelRequest}
+                  />
+                )
               )}
 
               <div ref={messagesEndRef} />
