@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useChat } from "@/contexts/ChatContext";
-import { queryApi } from "@/lib/query-api";
+import * as chatService from "@/services/chat-service";
 import { stopSpeaking } from "@/services/avatarService";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -44,7 +44,7 @@ export default function ChatPage() {
   const { data: popularQuestions, isLoading: isPopularLoading } = useQuery({
     queryKey: ["chat-popular-questions"],
     queryFn: async () => {
-      const result = await queryApi.getPopularQuestions(6);
+      const result = await chatService.getPopularQuestions(6);
       return result.map((item) => item.query).filter(Boolean);
     },
     staleTime: 120_000,

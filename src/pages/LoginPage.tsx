@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { LoginSchema } from "@/features/auth/schemas";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -18,20 +19,22 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
 
-  const validate = () => {
-    const e: typeof errors = {};
-    if (username.length < 3) e.username = "Username must be at least 3 characters";
-    if (password.length < 8) e.password = "Password must be at least 8 characters";
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    const result = LoginSchema.safeParse({ username, password });
+    if (!result.success) {
+      const fieldErrors: typeof errors = {};
+      for (const issue of result.error.issues) {
+        const field = issue.path[0] as keyof typeof errors;
+        fieldErrors[field] = issue.message;
+      }
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
     setLoading(true);
     try {
-      await login(username, password);
+      await login(result.data.username, result.data.password);
       navigate("/chat");
     } catch (err) {
       const apiErr = err instanceof AxiosError ? mapApiError(err) : null;

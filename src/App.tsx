@@ -9,6 +9,7 @@ import { ChatProvider } from "@/contexts/ChatContext";
 import ProtectedRoute from "@/components/shared/ProtectedRoute";
 import RoleGuard from "@/components/shared/RoleGuard";
 import AppShell from "@/components/layout/AppShell";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import {
   PageSkeleton,
   ChatSkeleton,
@@ -50,46 +51,55 @@ const App = () => (
                 <Route
                   path="/login"
                   element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <LoginPage />
-                    </Suspense>
+                    <ErrorBoundary>
+                      <Suspense fallback={<PageSkeleton />}>
+                        <LoginPage />
+                      </Suspense>
+                    </ErrorBoundary>
                   }
                 />
                 <Route
                   path="/register"
                   element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <RegisterPage />
-                    </Suspense>
+                    <ErrorBoundary>
+                      <Suspense fallback={<PageSkeleton />}>
+                        <RegisterPage />
+                      </Suspense>
+                    </ErrorBoundary>
                   }
                 />
 
                 {/* Protected routes */}
                 <Route element={<ProtectedRoute />}>
                   <Route element={<AppShell />}>
-                    {/* All authenticated users */}
                     <Route
                       path="/chat"
                       element={
-                        <Suspense fallback={<ChatSkeleton />}>
-                          <ChatPage />
-                        </Suspense>
+                        <ErrorBoundary>
+                          <Suspense fallback={<ChatSkeleton />}>
+                            <ChatPage />
+                          </Suspense>
+                        </ErrorBoundary>
                       }
                     />
                     <Route
                       path="/chat/:sessionId"
                       element={
-                        <Suspense fallback={<ChatSkeleton />}>
-                          <ChatPage />
-                        </Suspense>
+                        <ErrorBoundary>
+                          <Suspense fallback={<ChatSkeleton />}>
+                            <ChatPage />
+                          </Suspense>
+                        </ErrorBoundary>
                       }
                     />
                     <Route
                       path="/settings"
                       element={
-                        <Suspense fallback={<PageSkeleton />}>
-                          <SettingsPage />
-                        </Suspense>
+                        <ErrorBoundary>
+                          <Suspense fallback={<PageSkeleton />}>
+                            <SettingsPage />
+                          </Suspense>
+                        </ErrorBoundary>
                       }
                     />
 
@@ -98,17 +108,21 @@ const App = () => (
                       <Route
                         path="/admin/dashboard"
                         element={
-                          <Suspense fallback={<DashboardSkeleton />}>
-                            <DashboardPage />
-                          </Suspense>
+                          <ErrorBoundary>
+                            <Suspense fallback={<DashboardSkeleton />}>
+                              <DashboardPage />
+                            </Suspense>
+                          </ErrorBoundary>
                         }
                       />
                       <Route
                         path="/admin/users"
                         element={
-                          <Suspense fallback={<TableSkeleton />}>
-                            <UsersPage />
-                          </Suspense>
+                          <ErrorBoundary>
+                            <Suspense fallback={<TableSkeleton />}>
+                              <UsersPage />
+                            </Suspense>
+                          </ErrorBoundary>
                         }
                       />
                     </Route>
@@ -118,17 +132,21 @@ const App = () => (
                       <Route
                         path="/admin/ingestion"
                         element={
-                          <Suspense fallback={<TableSkeleton />}>
-                            <IngestionPage />
-                          </Suspense>
+                          <ErrorBoundary>
+                            <Suspense fallback={<TableSkeleton />}>
+                              <IngestionPage />
+                            </Suspense>
+                          </ErrorBoundary>
                         }
                       />
                       <Route
                         path="/admin/popular"
                         element={
-                          <Suspense fallback={<TableSkeleton />}>
-                            <PopularQuestionsPage />
-                          </Suspense>
+                          <ErrorBoundary>
+                            <Suspense fallback={<TableSkeleton />}>
+                              <PopularQuestionsPage />
+                            </Suspense>
+                          </ErrorBoundary>
                         }
                       />
                     </Route>

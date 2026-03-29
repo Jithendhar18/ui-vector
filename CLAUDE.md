@@ -1,45 +1,51 @@
-1. Architecture & Directory Strategy (Feature-Sliced)
-Feature-Based: Complex logic must live in src/features/[feature-name].
+# Andino Support — Coding Standards
 
-UI Primitives: Reusable components (Buttons, Inputs) live in src/components/ui.
+## 1. Architecture & Directory Strategy (Feature-Sliced)
 
-Service Layer: All API communication MUST be abstracted into src/services/api-client.ts. No raw fetch in UI components.
+- **Feature-Based**: Complex logic lives in `src/features/[feature-name]/` with components, hooks, and types co-located.
+- **UI Primitives**: Reusable components (Button, Input, Dialog) live in `src/components/ui/` (shadcn/ui).
+- **Service Layer**: Raw API calls in `src/lib/*-api.ts`. Business logic + Zod validation in `src/services/*-service.ts`. No raw fetch/axios in UI components.
+- **Path Aliases**: Always use `@/*` for imports. Zero relative `../` imports.
+- **Barrel Exports**: Use `index.ts` for clean module exports in `src/utils/`, `src/services/`, and feature directories.
 
-Path Aliases: Always use @/* for imports. Zero relative ../ imports.
+## 2. Type Safety & Validation
 
-2. Type Safety & Validation (Strict)
-Zero 'any': All data must have a TypeScript interface or type.
+- **Zero `any`**: All data must have a TypeScript interface or type. Browser API exceptions must use eslint-disable with justification.
+- **Zod at Boundaries**: API responses validated with Zod `.parse()` / `.safeParse()` in the service layer before data reaches UI.
+- **Zod for Forms**: Login/Register use Zod schemas for validation. Feature-specific schemas live in `src/features/*/schemas.ts`.
+- **Type Inference**: Feature types derived from Zod schemas: `type User = z.infer<typeof UserSchema>`. Global types live in `src/types/index.ts`.
 
-Schema-First: Use Zod for form validation and API response shapes.
+## 3. State Management
 
-Inference: Derive types from schemas: type User = z.infer<typeof UserSchema>.
+- **Server State**: React Query for all remote data. Stale times configured per feature.
+- **Client State**: React Context for auth, theme, and chat session state. All three are low-frequency updates.
+- **Separation**: Do not store API responses in Context; keep them in the React Query cache.
 
-3. State Management
-Server State: React Query for all remote data (5m stale time).
+## 4. Quality Gates
 
-Client State: Zustand for global UI/Auth. Context only for low-frequency updates.
+- **Unit Testing**: Vitest. Utilities and hooks should have `.test.ts` files.
+- **Linting**: ESLint + Prettier. Minimize eslint-disable comments (justify each one).
+- **Formatting**: Prettier with project `.prettierrc`. Run `pnpm format` before commits.
 
-Separation: Do not store API responses in Zustand; keep them in the React Query cache.
+## 5. Component & Styling Standards
 
-4. Quality Gates (Testing & Lint)
-Unit Testing: Vitest. Every utility/hook must have a .test.ts file.
+- **200-Line Guideline**: Files exceeding 200 lines should be split. Exception: ChatContext (314 lines) is justified as cohesive feature state.
+- **Conditional Classes**: Prefer `cn()` utility (clsx + tailwind-merge) for conditional classes. Template literals acceptable for simple cases.
+- **Logic Extraction**: Move complex logic into custom hooks (`src/features/*/hooks/`) or `src/utils/`.
+- **Error Boundaries**: Every route wrapped with `<ErrorBoundary>` + retry pattern.
 
-E2E Testing: Playwright for critical paths (Login, Chat, Payment).
+## 6. Scalability & Performance
 
-Coverage: Minimum 80% statement coverage.
+- **Error UX**: ErrorBoundary on every route. Pages with data fetching include inline retry buttons.
+- **Memoization**: Use `useMemo` and `useCallback` for expensive list renders and stable callback references.
 
-Linting: ESLint + Prettier. No warnings or "ignore" comments allowed.
+---
 
-5. Component & Styling Standards
-200-Line Limit: Files exceeding 200 lines MUST be split into sub-components.
+## Roadmap (Not Yet Implemented)
 
-Conditional Classes: Always use the cn() utility (clsx + tailwind-merge).
+These items are planned but not built. Do not assume they exist in the codebase.
 
-Logic Extraction: Move complex logic into custom hooks or src/utils.
-
-6. Scalability & Performance
-Error UX: Every feature must have an ErrorBoundary and a "Retry" pattern.
-
-Memoization: Use useMemo and useCallback for expensive list renders.
-
-Barrels: Use index.ts files for clean module exports.
+- [ ] **Zustand for Auth** — Migrate AuthContext to Zustand with persist middleware
+- [ ] **80% Test Coverage** — Unit tests for services, hooks, and components
+- [ ] **Playwright E2E** — Critical path tests (Login, Chat, Admin flows)
+- [ ] **Full cn() Migration** — Replace all template literal ternaries with cn() utility
