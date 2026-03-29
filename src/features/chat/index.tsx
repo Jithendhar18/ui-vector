@@ -51,12 +51,48 @@ export default function ChatPage() {
     retry: 0,
   });
 
-  // Track avatar state from loading — never override active speaking
+  // Derive avatar state from system activity
   useEffect(() => {
+    // TTS speaking takes priority
     if (speakingMessageId) return;
-    if (isLoading) setAvatarState("processing");
-    else setAvatarState("idle");
-  }, [isLoading, speakingMessageId]);
+
+    // Voice input
+    if (isVoiceListening) {
+      setAvatarState("listening");
+      return;
+    }
+
+    // Streaming — map node labels to avatar states
+    if (isLoading && streamingMessage) {
+      const label = streamingMessage.statusLabel ?? "";
+      const isSearching =
+        label.includes("Searching") ||
+        label.includes("Ranking") ||
+        label.includes("Preparing") ||
+        label.includes("Generating") ||
+        label.includes("Checking") ||
+        label.includes("Finalizing");
+      setAvatarState(isSearching ? "generating" : "processing");
+      return;
+    }
+
+    // Loading but no stream yet (initial thinking)
+    if (isLoading) {
+      setAvatarState("processing");
+      return;
+    }
+
+    // Check if last message was an error
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.status === "error") {
+      setAvatarState("error");
+      // Return to idle after 3 seconds
+      const timer = setTimeout(() => setAvatarState("idle"), 3000);
+      return () => clearTimeout(timer);
+    }
+
+    setAvatarState("idle");
+  }, [isLoading, streamingMessage, streamingMessage?.statusLabel, speakingMessageId, isVoiceListening, messages]);
 
   const handleSpeak = useCallback((messageId: string, plainText: string) => {
     if (speakingMessageId === messageId && isSpeaking()) {
@@ -124,7 +160,7 @@ export default function ChatPage() {
     <div className="flex h-full">
       {/* Chat area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <AvatarHeader state={avatarState} />
+        <AvatarHeader state={avatarState} hasMessages={messages.length > 0} messageCount={messages.length} />
 
         {isEmpty ? (
           <div className="flex-1">

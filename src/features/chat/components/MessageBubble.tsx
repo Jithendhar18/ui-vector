@@ -65,15 +65,7 @@ export const MessageBubble = memo(function MessageBubble({
   return (
     <div className="flex group animate-fade-in" role="log" aria-live="polite">
       <div className="max-w-[78%] max-sm:max-w-[90%]">
-        <div className="relative rounded-[3px_14px_14px_14px] bg-card border border-border px-[14px] py-[11px] text-sm leading-relaxed">
-          <button
-            onClick={handleCopy}
-            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity p-1 rounded-lg hover:bg-secondary"
-            aria-label="Copy response"
-          >
-            {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3 text-muted-foreground" />}
-          </button>
-
+        <div className="rounded-[3px_14px_14px_14px] bg-card border border-border px-[14px] py-[11px] text-sm leading-relaxed">
           <div className="markdown-content">
             <ReactMarkdown
               rehypePlugins={[rehypeSanitize, rehypeHighlight]}
@@ -96,18 +88,27 @@ export const MessageBubble = memo(function MessageBubble({
           )}
         </div>
 
-        {isCompleted && onSpeak && (
-          <div className="flex items-center gap-1 mt-1 ml-1">
+        {isCompleted && (
+          <div className="flex items-center gap-1 mt-1.5 ml-1 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity">
             <button
-              onClick={handleSpeak}
+              onClick={handleCopy}
               className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-              aria-label={isSpeaking ? "Stop speaking" : "Read aloud"}
+              aria-label="Copy response"
             >
-              {isSpeaking
-                ? <VolumeX className="h-4 w-4 text-success" />
-                : <Volume2 className="h-4 w-4" />
-              }
+              {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
             </button>
+            {onSpeak && (
+              <button
+                onClick={handleSpeak}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                aria-label={isSpeaking ? "Stop speaking" : "Read aloud"}
+              >
+                {isSpeaking
+                  ? <VolumeX className="h-3.5 w-3.5 text-success" />
+                  : <Volume2 className="h-3.5 w-3.5" />
+                }
+              </button>
+            )}
           </div>
         )}
       </div>

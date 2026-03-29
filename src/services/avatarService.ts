@@ -3,7 +3,7 @@
  * Provides speaking state management and callbacks.
  */
 
-export type AvatarState = "idle" | "listening" | "processing" | "generating" | "speaking";
+export type AvatarState = "idle" | "listening" | "processing" | "generating" | "speaking" | "error";
 
 interface AvatarServiceOptions {
   onStateChange: (state: AvatarState) => void;
@@ -48,7 +48,7 @@ export function speak(
     stopSpeaking();
 
     lastSpokenText = text;
-    options.onStateChange("generating");
+    options.onStateChange("speaking");
 
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = getPreferredVoice(options.voice);
