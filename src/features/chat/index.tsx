@@ -1,17 +1,18 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useChat } from "@/contexts/ChatContext";
 import * as chatService from "@/services/chat-service";
 import { stopSpeaking } from "@/services/avatarService";
+import type { AvatarState } from "@/services/avatarService";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import AvatarPanel from "@/components/AvatarPanel";
 import { SessionList } from "@/features/chat/components/SessionList";
 import { MessageList } from "@/features/chat/components/MessageList";
 import { EmptyState } from "@/features/chat/components/EmptyState";
 import { ChatInput } from "@/features/chat/components/ChatInput";
+import { AvatarHeader } from "@/features/chat/components/AvatarHeader";
 import { useChatScroll } from "@/features/chat/hooks/useChatScroll";
 
 export default function ChatPage() {
@@ -32,6 +33,7 @@ export default function ChatPage() {
   const [elapsed, setElapsed] = useState(0);
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const [isVoiceListening, setIsVoiceListening] = useState(false);
+  const [avatarState, setAvatarState] = useState<AvatarState>("idle");
 
   const messages = activeSession?.messages ?? [];
   const isEmpty = messages.length === 0 && !streamingMessage && !isLoading;
@@ -51,15 +53,10 @@ export default function ChatPage() {
     retry: 0,
   });
 
-  const lastAssistantMessage = useMemo(() => {
-    const msgs = activeSession?.messages ?? [];
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].role === "assistant" && msgs[i].status === "done") {
-        return msgs[i].content;
-      }
-    }
-    return undefined;
-  }, [activeSession?.messages]);
+  // Track avatar state from loading
+  useEffect(() => {
+    setAvatarState(isLoading ? "processing" : "idle");
+  }, [isLoading]);
 
   // Sync URL → state
   useEffect(() => {
@@ -131,6 +128,8 @@ export default function ChatPage() {
           </Button>
         </div>
 
+        <AvatarHeader state={avatarState} />
+
         {isEmpty ? (
           <div className="flex-1">
             <EmptyState
@@ -159,14 +158,6 @@ export default function ChatPage() {
         />
       </div>
 
-      {/* Avatar side panel — desktop only */}
-      <div className="hidden lg:flex">
-        <AvatarPanel
-          lastAssistantMessage={lastAssistantMessage}
-          isProcessing={isLoading}
-          onInterrupt={cancelRequest}
-        />
-      </div>
     </div>
   );
 }
