@@ -5,10 +5,7 @@ import { useChat } from "@/contexts/ChatContext";
 import * as chatService from "@/services/chat-service";
 import { speak, stopSpeaking, isSpeaking } from "@/services/avatarService";
 import type { AvatarState } from "@/services/avatarService";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { SessionList } from "@/features/chat/components/SessionList";
 import { MessageList } from "@/features/chat/components/MessageList";
 import { EmptyState } from "@/features/chat/components/EmptyState";
 import { ChatInput } from "@/features/chat/components/ChatInput";
@@ -31,7 +28,6 @@ export default function ChatPage() {
   } = useChat();
 
   const [elapsed, setElapsed] = useState(0);
-  const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const [isVoiceListening, setIsVoiceListening] = useState(false);
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
@@ -126,31 +122,8 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full">
-      {/* Desktop session sidebar */}
-      <div className="hidden md:flex w-[280px] border-r border-border shrink-0">
-        <SessionList />
-      </div>
-
-      {/* Mobile session sidebar */}
-      <Sheet open={mobileSessionsOpen} onOpenChange={setMobileSessionsOpen}>
-        <SheetContent side="left" className="p-0 w-[280px]">
-          <SessionList onClose={() => setMobileSessionsOpen(false)} />
-        </SheetContent>
-      </Sheet>
-
       {/* Chat area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="md:hidden flex items-center p-2 border-b border-border">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setMobileSessionsOpen(true)}
-            aria-label="Open sessions"
-          >
-            Sessions
-          </Button>
-        </div>
-
         <AvatarHeader state={avatarState} />
 
         {isEmpty ? (

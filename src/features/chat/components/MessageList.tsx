@@ -29,10 +29,10 @@ export function MessageList({
     <div
       ref={scrollContainerRef}
       onScroll={onScroll}
-      className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6"
+      className="flex-1 overflow-y-auto scrollbar-thin px-8 py-6"
       style={{ scrollBehavior: "smooth" }}
     >
-      <div className="max-w-3xl mx-auto space-y-4">
+      <div className="max-w-3xl mx-auto space-y-5">
         {messages.map((msg) => (
           <MessageBubble
             key={msg.id}

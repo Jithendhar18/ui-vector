@@ -15,15 +15,15 @@ const STATE_SUBTITLE: Record<AvatarState, string> = {
 
 const BORDER_CLASS: Record<AvatarState, string> = {
   idle: "border-border",
-  listening: "border-destructive shadow-[0_0_12px_hsl(var(--destructive)/0.3)]",
-  processing: "border-warning shadow-[0_0_12px_hsl(var(--warning)/0.3)]",
-  generating: "border-warning shadow-[0_0_12px_hsl(var(--warning)/0.3)]",
-  speaking: "border-success shadow-[0_0_12px_hsl(var(--success)/0.3)]",
+  listening: "border-destructive shadow-[0_0_16px_hsl(var(--destructive)/0.3)]",
+  processing: "border-warning shadow-[0_0_16px_hsl(var(--warning)/0.3)]",
+  generating: "border-warning shadow-[0_0_16px_hsl(var(--warning)/0.3)]",
+  speaking: "border-success shadow-[0_0_16px_hsl(var(--success)/0.3)]",
 };
 
 export function AvatarHeader({ state }: AvatarHeaderProps) {
   return (
-    <div className="flex flex-col items-center py-4 border-b border-border bg-card/50">
+    <div className="flex flex-col items-center pt-6 pb-4">
       <div className="relative">
         {state === "speaking" && (
           <div className="absolute inset-0 rounded-full bg-success/40 animate-pulse-ring" />
@@ -34,7 +34,7 @@ export function AvatarHeader({ state }: AvatarHeaderProps) {
         )}
 
         <div
-          className={`relative rounded-full overflow-hidden w-16 h-16 border-2 transition-all duration-500 ${BORDER_CLASS[state]}`}
+          className={`relative rounded-full overflow-hidden w-20 h-20 border-[2.5px] transition-all duration-500 ${BORDER_CLASS[state]}`}
         >
           <img
             src={avatarImage}
@@ -44,8 +44,8 @@ export function AvatarHeader({ state }: AvatarHeaderProps) {
         </div>
       </div>
 
-      <p className="mt-2 text-sm font-semibold text-foreground">Andino Support</p>
-      <p className="text-xs text-muted-foreground">{STATE_SUBTITLE[state]}</p>
+      <p className="mt-2.5 text-base font-semibold text-foreground">Andino Support</p>
+      <p className="text-sm text-muted-foreground">{STATE_SUBTITLE[state]}</p>
     </div>
   );
 }
