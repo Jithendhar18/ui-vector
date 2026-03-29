@@ -63,6 +63,7 @@ export interface QueryStreamEvent {
   metadata?: Record<string, unknown>;
   session_id?: string;
   latency_ms?: number;
+  error?: string;
 }
 
 export interface ChatSessionListItem {

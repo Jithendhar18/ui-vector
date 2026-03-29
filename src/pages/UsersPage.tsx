@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/lib/admin-api";
 import { mapApiError } from "@/lib/api-error";
@@ -165,10 +165,13 @@ function EditUserModal({
   const [role, setRole] = useState<Role>(user?.role ?? "user");
   const [isActive, setIsActive] = useState(user?.is_active ?? true);
 
-  // Reset when user changes
-  if (user && role !== user.role && !isSaving) {
-    // Only on initial open
-  }
+  // Reset state when a different user is selected
+  useEffect(() => {
+    if (user) {
+      setRole(user.role);
+      setIsActive(user.is_active);
+    }
+  }, [user]);
 
   return (
     <Dialog open={!!user} onOpenChange={() => onClose()}>
@@ -185,7 +188,7 @@ function EditUserModal({
 
             <div className="space-y-2">
               <Label htmlFor="role" aria-label="User role">Role</Label>
-              <Select defaultValue={user.role} onValueChange={(v) => setRole(v as Role)}>
+              <Select value={role} onValueChange={(v) => setRole(v as Role)}>
                 <SelectTrigger aria-label="User role">
                   <SelectValue />
                 </SelectTrigger>
@@ -201,7 +204,7 @@ function EditUserModal({
               <Label htmlFor="active" aria-label="Account active">Active</Label>
               <Switch
                 id="active"
-                defaultChecked={user.is_active}
+                checked={isActive}
                 onCheckedChange={setIsActive}
                 aria-label="Account active"
               />

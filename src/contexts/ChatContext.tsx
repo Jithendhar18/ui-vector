@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AxiosError } from "axios";
 import { queryApi } from "@/lib/query-api";
 import { mapApiError } from "@/lib/api-error";
-import type { ChatSession, ChatSessionHistory, ChatSessionListItem, Message } from "@/types";
+import type { ChatSession, ChatSessionHistory, ChatSessionListItem, Message, SourceDocument } from "@/types";
 
 const PAGE_SIZE = 50;
 
@@ -132,11 +132,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!activeSessionId) return;
+    // Don't try to load ephemeral local sessions from backend
+    if (activeSessionId.startsWith("local-")) return;
     const current = sessions.find((session) => session.id === activeSessionId);
     if (!current || current.messages.length === 0) {
-      loadSessionById(activeSessionId).catch(() => {
-        // Keep sidebar list even if the detailed fetch fails.
-      });
+      loadSessionById(activeSessionId).catch(() => {});
     }
   }, [activeSessionId, loadSessionById, sessions]);
 
@@ -196,24 +196,31 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const ephemeralId = activeSessionId ?? `local-${crypto.randomUUID()}`;
       const existing = sessions.find((session) => session.id === activeSessionId);
 
+      // Update session and active ID together so React renders them in one pass
+      const now = new Date().toISOString();
       if (existing) {
         replaceSession({
           ...existing,
           messages: [...existing.messages, userMessage],
-          updatedAt: new Date().toISOString(),
+          updatedAt: now,
           messageCount: (existing.messageCount ?? existing.messages.length) + 1,
-          lastMessageAt: new Date().toISOString(),
+          lastMessageAt: now,
         });
       } else {
-        replaceSession({
+        const newSession: ChatSession = {
           id: ephemeralId,
           title: trimmedQuery.slice(0, 60),
           messages: [userMessage],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          createdAt: now,
+          updatedAt: now,
           messageCount: 1,
-          lastMessageAt: new Date().toISOString(),
-        });
+          lastMessageAt: now,
+        };
+        setSessions((prev) =>
+          [newSession, ...prev].sort(
+            (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          )
+        );
         setActiveSessionId(ephemeralId);
       }
 
@@ -231,40 +238,99 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       abortRef.current = controller;
 
       try {
-        const response = await queryApi.query(trimmedQuery, 5, activeSessionId ?? undefined);
+        let finalAnswer = "";
+        let finalSources: SourceDocument[] = [];
+        let finalSessionId: string | null = null;
+        let finalLatency: number | undefined;
+
+        // Use streaming endpoint — shows answer as soon as LLM completes
+        for await (const event of queryApi.streamEvents(
+          trimmedQuery,
+          5,
+          activeSessionId ?? undefined,
+          controller.signal
+        )) {
+          if (controller.signal.aborted) return;
+
+          if (event.error) {
+            throw new Error(event.error);
+          }
+
+          // Capture session_id from any event
+          if (event.session_id) {
+            finalSessionId = event.session_id;
+          }
+
+          if (event.latency_ms) {
+            finalLatency = event.latency_ms;
+          }
+
+          // Update streaming message as answer arrives
+          if (event.answer) {
+            finalAnswer = event.answer;
+            setStreamingMessage((prev) =>
+              prev
+                ? { ...prev, content: finalAnswer, statusLabel: "Generating..." }
+                : prev
+            );
+          }
+
+          if (event.sources && event.sources.length > 0) {
+            finalSources = event.sources;
+          }
+
+          // Update status label based on pipeline node
+          if (event.node && !event.answer) {
+            const labels: Record<string, string> = {
+              input: "Processing...",
+              query_rewrite: "Optimizing query...",
+              retriever: "Searching documents...",
+              reranker: "Ranking results...",
+              context_compressor: "Preparing context...",
+              llm_reasoning: "Generating answer...",
+              response_validator: "Checking answer...",
+              response: "Finalizing...",
+            };
+            const label = labels[event.node] ?? "Processing...";
+            setStreamingMessage((prev) =>
+              prev ? { ...prev, statusLabel: label } : prev
+            );
+          }
+        }
+
         if (controller.signal.aborted) return;
 
         const assistantMessage: Message = {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: response.answer,
-          sources: response.sources,
-          latency_ms: response.latency_ms,
+          content: finalAnswer,
+          sources: finalSources,
+          latency_ms: finalLatency,
           timestamp: new Date().toISOString(),
           status: "done",
         };
 
-        const persistedSession = await queryApi.getSession(response.session_id);
-        const mapped = mapHistoryToSession(persistedSession);
+        // Update session with final message and resolve ephemeral → real ID
+        const resolvedSessionId = finalSessionId ?? ephemeralId;
+        const targetId = ephemeralId; // Always use ephemeralId — it's what we set earlier
 
-        const hasAssistant = mapped.messages.some(
-          (message) => message.role === "assistant" && message.content === assistantMessage.content
-        );
-
-        replaceSession(
-          hasAssistant
-            ? mapped
-            : {
-                ...mapped,
-                messages: [...mapped.messages, assistantMessage],
+        setSessions((prev) =>
+          prev
+            .map((session) => {
+              if (session.id !== targetId) return session;
+              return {
+                ...session,
+                id: resolvedSessionId,
+                messages: [...session.messages, assistantMessage],
                 updatedAt: new Date().toISOString(),
-              }
+                messageCount: (session.messageCount ?? session.messages.length) + 1,
+                lastMessageAt: new Date().toISOString(),
+              };
+            })
+            .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         );
-
-        if (activeSessionId !== response.session_id) {
-          setSessions((prev) => prev.filter((session) => session.id !== ephemeralId));
-          setActiveSessionId(response.session_id);
-        }
+        // Always update activeSessionId to the resolved one
+        setActiveSessionId(resolvedSessionId);
       } catch (error) {
         if (controller.signal.aborted) return;
 
@@ -272,7 +338,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           error instanceof AxiosError
             ? mapApiError(error)
             : {
-                message: "An unexpected error occurred.",
+                message: error instanceof Error ? error.message : "An unexpected error occurred.",
                 detail: "Unexpected error",
                 retryable: true,
                 status: 0,
@@ -301,9 +367,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         setStreamingMessage(null);
         abortRef.current = null;
-        reloadSessions().catch(() => {
-          // Keep current state when refresh fails.
-        });
+        // Background refresh of session list (non-blocking)
+        reloadSessions().catch(() => {});
       }
     },
     [activeSessionId, isLoading, reloadSessions, replaceSession, sessions]
