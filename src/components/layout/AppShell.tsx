@@ -98,7 +98,7 @@ function SidebarContent({
           </button>
         )}
         {!collapsed && (
-          <span className="font-semibold text-sm text-sidebar-foreground truncate">BookStack RAG</span>
+          <span className="font-semibold text-sm text-sidebar-foreground truncate">Andino Support</span>
         )}
       </div>
 

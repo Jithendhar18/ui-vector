@@ -1,5 +1,3 @@
-import { BookOpen } from "lucide-react";
-
 interface EmptyStateProps {
   onSuggest: (query: string) => void;
   suggestions: string[];
@@ -9,8 +7,7 @@ interface EmptyStateProps {
 export function EmptyState({ onSuggest, suggestions, isSuggestionsLoading }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-6 px-4">
-      <BookOpen className="h-12 w-12 text-muted-foreground/40" />
-      <h2 className="text-2xl font-semibold text-foreground">How can I help you today?</h2>
+      <p className="text-sm font-medium text-muted-foreground">Frequently Asked</p>
       {isSuggestionsLoading ? (
         <p className="text-sm text-muted-foreground">Loading popular questions...</p>
       ) : suggestions.length > 0 ? (

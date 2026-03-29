@@ -63,14 +63,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const mapped = await chatService.loadSessions();
     setSessions((prev) => {
       const previousById = new Map(prev.map((s) => [s.id, s]));
-      return mapped.map((s) => {
+      // Keep local-only sessions (e.g. greeting responses that never hit the backend)
+      const localSessions = prev.filter((s) => s.id.startsWith("local-"));
+      const merged = mapped.map((s) => {
         const previous = previousById.get(s.id);
         if (!previous || previous.messages.length === 0) return s;
         return { ...s, messages: previous.messages };
       });
+      return sortByDate([...localSessions, ...merged]);
     });
 
-    if (activeSessionId) {
+    if (activeSessionId && !activeSessionId.startsWith("local-")) {
       const stillExists = mapped.some((s) => s.id === activeSessionId);
       if (!stillExists) setActiveSessionId(null);
     }
@@ -159,6 +162,44 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setActiveSessionId(ephemeralId);
       }
 
+      // Greeting detection — skip RAG pipeline for simple greetings
+      const GREETING_PATTERN = /^(hi|hello|hey|howdy|good\s*(morning|afternoon|evening)|what'?s\s*up|sup|yo)[\s!?.]*$/i;
+      if (GREETING_PATTERN.test(trimmed)) {
+        const GREETING_RESPONSES = [
+          "Hello! How can I help you with your documentation today?",
+          "Hi there! What would you like to know about your docs?",
+          "Hey! I'm ready to help. Ask me anything about your documentation.",
+        ];
+        const greetingReply = GREETING_RESPONSES[Math.floor(Math.random() * GREETING_RESPONSES.length)];
+
+        // Brief typing delay so it feels natural (400–600ms)
+        await new Promise((r) => setTimeout(r, 400 + Math.random() * 200));
+
+        const assistantMessage: Message = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: greetingReply,
+          timestamp: new Date().toISOString(),
+          status: "done",
+        };
+
+        setSessions((prev) =>
+          sortByDate(
+            prev.map((s) => {
+              if (s.id !== ephemeralId) return s;
+              return {
+                ...s,
+                messages: [...s.messages, assistantMessage],
+                updatedAt: new Date().toISOString(),
+                messageCount: (s.messageCount ?? s.messages.length) + 1,
+                lastMessageAt: new Date().toISOString(),
+              };
+            })
+          )
+        );
+        return;
+      }
+
       setStreamingMessage({
         id: crypto.randomUUID(),
         role: "assistant",
@@ -192,7 +233,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         for await (const event of chatService.streamMessage(
           trimmed,
           5,
-          activeSessionId ?? undefined,
+          activeSessionId?.startsWith("local-") ? undefined : activeSessionId ?? undefined,
           controller.signal
         )) {
           if (controller.signal.aborted) return;
