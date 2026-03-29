@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ingestionApi } from "@/lib/ingestion-api";
 import { mapApiError } from "@/lib/api-error";
 import { AxiosError } from "axios";
-import { Database, Loader2 } from "lucide-react";
+import { Database, Loader2, BookOpen, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,8 +11,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { STATUS_COLORS } from "@/utils/status-colors";
 import { relativeTime } from "@/utils/date";
+import BooksTab from "@/pages/components/BooksTab";
+
+type TabId = "documents" | "books";
 
 export default function IngestionPage() {
+  const [activeTab, setActiveTab] = useState<TabId>("documents");
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -100,7 +104,40 @@ export default function IngestionPage() {
         </div>
       )}
 
-      {/* Documents table */}
+      {/* Tab toggle */}
+      <div className="flex gap-1 p-1 rounded-xl bg-secondary/50 w-fit">
+        <button
+          onClick={() => setActiveTab("documents")}
+          className={[
+            "flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
+            activeTab === "documents"
+              ? "bg-background shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          ].join(" ")}
+          aria-selected={activeTab === "documents"}
+          role="tab"
+        >
+          <FileText className="h-3.5 w-3.5" />
+          Documents
+        </button>
+        <button
+          onClick={() => setActiveTab("books")}
+          className={[
+            "flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
+            activeTab === "books"
+              ? "bg-background shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          ].join(" ")}
+          aria-selected={activeTab === "books"}
+          role="tab"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          Books
+        </button>
+      </div>
+
+      {/* Documents tab */}
+      {activeTab === "documents" && (
       <div>
         <div className="flex items-center gap-3 mb-3">
           <h2 className="text-lg font-semibold">Documents</h2>
@@ -176,6 +213,10 @@ export default function IngestionPage() {
           </Button>
         </div>
       </div>
+      )}
+
+      {/* Books tab */}
+      {activeTab === "books" && <BooksTab />}
     </div>
   );
 }
