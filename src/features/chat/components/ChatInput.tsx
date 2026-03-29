@@ -12,10 +12,10 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, onCancel, isLoading, onVoiceListening }: ChatInputProps) {
   const [value, setValue] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!isLoading) textareaRef.current?.focus();
+    if (!isLoading) inputRef.current?.focus();
   }, [isLoading]);
 
   const handleSubmit = () => {
@@ -23,21 +23,13 @@ export function ChatInput({ onSend, onCancel, isLoading, onVoiceListening }: Cha
     if (!q || isLoading) return;
     onSend(q);
     setValue("");
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter") {
       e.preventDefault();
       handleSubmit();
     }
-  };
-
-  const handleInput = () => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 160) + "px";
   };
 
   const handleVoiceTranscript = useCallback((text: string) => {
@@ -46,24 +38,28 @@ export function ChatInput({ onSend, onCancel, isLoading, onVoiceListening }: Cha
   }, [onSend]);
 
   return (
-    <div className="sticky bottom-0 bg-background pb-4 safe-bottom pt-2 px-4">
-      <div className="relative max-w-3xl mx-auto flex items-end gap-2">
-        <div className="relative flex-1">
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
-            placeholder="Ask anything about your documentation..."
-            rows={1}
-            className="w-full resize-none rounded-2xl border border-border bg-card px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 transition-shadow"
-            aria-label="Chat message input"
+    <div className="bg-background safe-bottom px-4 py-3">
+      <div className="max-w-4xl mx-auto relative flex items-center rounded-full border border-border bg-secondary/50 focus-within:ring-2 focus-within:ring-primary/30 transition-shadow">
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Ask anything about your documentation..."
+          className="flex-1 h-10 bg-transparent px-4 text-sm focus:outline-none placeholder:text-muted-foreground"
+          aria-label="Chat message input"
+        />
+        <div className="flex items-center gap-2 pr-2">
+          <VoiceInput
+            onTranscriptReady={handleVoiceTranscript}
+            onListeningChange={onVoiceListening}
+            disabled={isLoading}
           />
           <button
             onClick={isLoading ? onCancel : handleSubmit}
             disabled={!isLoading && !value.trim()}
-            className={`absolute right-3 bottom-3 h-8 w-8 rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 disabled:opacity-40 ${
+            className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-200 active:scale-95 disabled:opacity-40 ${
               isLoading
                 ? "bg-destructive text-destructive-foreground"
                 : "bg-primary text-primary-foreground"
@@ -73,11 +69,6 @@ export function ChatInput({ onSend, onCancel, isLoading, onVoiceListening }: Cha
             {isLoading ? <Square className="h-3.5 w-3.5" /> : <ArrowUp className="h-4 w-4" />}
           </button>
         </div>
-        <VoiceInput
-          onTranscriptReady={handleVoiceTranscript}
-          onListeningChange={onVoiceListening}
-          disabled={isLoading}
-        />
       </div>
     </div>
   );

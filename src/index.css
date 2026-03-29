@@ -160,3 +160,17 @@
   0% { height: 4px; }
   100% { height: 20px; }
 }
+
+/* Pulse ring behind avatar when speaking */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.45; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+.animate-pulse-ring-slow {
+  animation: pulse-ring 2.5s ease-out infinite;
+}

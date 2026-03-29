@@ -1,17 +1,15 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useChat } from "@/contexts/ChatContext";
 import * as chatService from "@/services/chat-service";
-import { stopSpeaking } from "@/services/avatarService";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { speak, stopSpeaking, isSpeaking } from "@/services/avatarService";
+import type { AvatarState } from "@/services/avatarService";
 import { toast } from "sonner";
-import AvatarPanel from "@/components/AvatarPanel";
-import { SessionList } from "@/features/chat/components/SessionList";
 import { MessageList } from "@/features/chat/components/MessageList";
 import { EmptyState } from "@/features/chat/components/EmptyState";
 import { ChatInput } from "@/features/chat/components/ChatInput";
+import { AvatarHeader } from "@/features/chat/components/AvatarHeader";
 import { useChatScroll } from "@/features/chat/hooks/useChatScroll";
 
 export default function ChatPage() {
@@ -30,15 +28,17 @@ export default function ChatPage() {
   } = useChat();
 
   const [elapsed, setElapsed] = useState(0);
-  const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const [isVoiceListening, setIsVoiceListening] = useState(false);
+  const [avatarState, setAvatarState] = useState<AvatarState>("idle");
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
 
   const messages = activeSession?.messages ?? [];
   const isEmpty = messages.length === 0 && !streamingMessage && !isLoading;
 
   const { messagesEndRef, scrollContainerRef, handleScroll } = useChatScroll(
     messages,
-    streamingMessage
+    streamingMessage,
+    isLoading
   );
 
   const { data: popularQuestions, isLoading: isPopularLoading } = useQuery({
@@ -51,15 +51,31 @@ export default function ChatPage() {
     retry: 0,
   });
 
-  const lastAssistantMessage = useMemo(() => {
-    const msgs = activeSession?.messages ?? [];
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].role === "assistant" && msgs[i].status === "done") {
-        return msgs[i].content;
-      }
+  // Track avatar state from loading — never override active speaking
+  useEffect(() => {
+    if (speakingMessageId) return;
+    if (isLoading) setAvatarState("processing");
+    else setAvatarState("idle");
+  }, [isLoading, speakingMessageId]);
+
+  const handleSpeak = useCallback((messageId: string, plainText: string) => {
+    if (speakingMessageId === messageId && isSpeaking()) {
+      stopSpeaking();
+      setSpeakingMessageId(null);
+      setAvatarState("idle");
+      return;
     }
-    return undefined;
-  }, [activeSession?.messages]);
+    setSpeakingMessageId(messageId);
+    speak(plainText, {
+      onStateChange: (state) => {
+        setAvatarState(state);
+        if (state === "idle") setSpeakingMessageId(null);
+      },
+    }).catch(() => {
+      setSpeakingMessageId(null);
+      setAvatarState("idle");
+    });
+  }, [speakingMessageId]);
 
   // Sync URL → state
   useEffect(() => {
@@ -106,30 +122,9 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full">
-      {/* Desktop session sidebar */}
-      <div className="hidden md:flex w-[280px] border-r border-border shrink-0">
-        <SessionList />
-      </div>
-
-      {/* Mobile session sidebar */}
-      <Sheet open={mobileSessionsOpen} onOpenChange={setMobileSessionsOpen}>
-        <SheetContent side="left" className="p-0 w-[280px]">
-          <SessionList onClose={() => setMobileSessionsOpen(false)} />
-        </SheetContent>
-      </Sheet>
-
       {/* Chat area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="md:hidden flex items-center p-2 border-b border-border">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setMobileSessionsOpen(true)}
-            aria-label="Open sessions"
-          >
-            Sessions
-          </Button>
-        </div>
+        <AvatarHeader state={avatarState} />
 
         {isEmpty ? (
           <div className="flex-1">
@@ -148,6 +143,8 @@ export default function ChatPage() {
             scrollContainerRef={scrollContainerRef}
             messagesEndRef={messagesEndRef}
             onScroll={handleScroll}
+            onSpeak={handleSpeak}
+            speakingMessageId={speakingMessageId}
           />
         )}
 
@@ -159,14 +156,6 @@ export default function ChatPage() {
         />
       </div>
 
-      {/* Avatar side panel — desktop only */}
-      <div className="hidden lg:flex">
-        <AvatarPanel
-          lastAssistantMessage={lastAssistantMessage}
-          isProcessing={isLoading}
-          onInterrupt={cancelRequest}
-        />
-      </div>
     </div>
   );
 }
