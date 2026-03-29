@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useChat } from "@/contexts/ChatContext";
 import { relativeTime } from "@/utils/date";
 import { groupByDate } from "@/utils/date";
@@ -10,19 +10,13 @@ interface SessionListProps {
 }
 
 export function SessionList({ onClose }: SessionListProps) {
-  const { sessions, activeSessionId, createNewSession, setActiveSession, deleteSession } = useChat();
+  const { sessions, activeSessionId, setActiveSession, deleteSession } = useChat();
   const navigate = useNavigate();
 
   const sorted = [...sessions].sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
   const grouped = groupByDate<ChatSession>(sorted, (s) => s.updatedAt);
-
-  const handleNew = () => {
-    createNewSession();
-    navigate("/chat");
-    onClose?.();
-  };
 
   const handleSelect = (id: string) => {
     setActiveSession(id);
@@ -32,18 +26,7 @@ export function SessionList({ onClose }: SessionListProps) {
 
   return (
     <div className="flex flex-col h-full bg-sidebar">
-      <div className="px-3 pt-2.5 pb-1">
-        <button
-          onClick={handleNew}
-          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-          aria-label="New chat"
-        >
-          <Plus className="h-4 w-4 shrink-0" />
-          <span>New Chat</span>
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-2">
+      <div className="flex-1 overflow-y-auto scrollbar-thin px-3 py-2">
         {sessions.length === 0 ? (
           <p className="text-center text-xs text-muted-foreground mt-8">No conversations yet</p>
         ) : (

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, Outlet, useLocation, useOutletContext } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useOutletContext, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { safeGetItem, safeSetItem } from "@/lib/storage";
@@ -16,17 +16,31 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeft,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SessionList } from "@/features/chat/components/SessionList";
+import { useChat } from "@/contexts/ChatContext";
 
+// Primary nav — always visible in sidebar
 const NAV_ITEMS = [
   { to: "/chat", label: "Chat", icon: MessageSquare, roles: ["admin", "developer", "user"] },
   { to: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin"] },
-  { to: "/admin/users", label: "Users", icon: Users, roles: ["admin"] },
   { to: "/admin/ingestion", label: "Ingestion", icon: Database, roles: ["admin", "developer"] },
   { to: "/admin/popular", label: "Popular", icon: TrendingUp, roles: ["admin", "developer"] },
+] as const;
+
+// Secondary nav — inside profile menu
+const PROFILE_MENU_ITEMS = [
+  { to: "/admin/users", label: "Users", icon: Users, roles: ["admin"] },
   { to: "/settings", label: "Settings", icon: Settings, roles: ["admin", "developer", "user"] },
 ] as const;
 
@@ -37,9 +51,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/ingestion": "Ingestion",
   "/admin/popular": "Popular Questions",
   "/settings": "Settings",
-  "/dashboard": "Dashboard",
-  "/users": "Users",
-  "/ingestion": "Ingestion",
 };
 
 interface SidebarContextValue {
@@ -58,6 +69,8 @@ function SidebarContent({
   resolvedTheme,
   onThemeToggle,
   onLogout,
+  onNavigate,
+  onNewChat,
 }: {
   collapsed: boolean;
   showSessions: boolean;
@@ -66,6 +79,8 @@ function SidebarContent({
   resolvedTheme: "light" | "dark";
   onThemeToggle: () => void;
   onLogout: () => void;
+  onNavigate: (path: string) => void;
+  onNewChat?: () => void;
 }) {
   const { user } = useAuth();
 
@@ -87,7 +102,24 @@ function SidebarContent({
         )}
       </div>
 
-      {/* Nav items */}
+      {/* New Chat button */}
+      {onNewChat && (
+        <div className={collapsed ? "px-2" : "px-3"}>
+          <button
+            onClick={() => { onNewChat(); onNavClick?.(); }}
+            className={`flex items-center gap-3 rounded-lg w-full transition-colors duration-150 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent ${
+              collapsed ? "h-9 justify-center" : "px-3 py-2.5"
+            }`}
+            aria-label="New chat"
+            title={collapsed ? "New chat" : undefined}
+          >
+            <Plus className="h-4 w-4 shrink-0" />
+            {!collapsed && <span>New Chat</span>}
+          </button>
+        </div>
+      )}
+
+      {/* Primary nav items */}
       <nav className={`shrink-0 space-y-0.5 ${collapsed ? "px-2" : "px-3"}`}>
         {NAV_ITEMS.filter((item) => user && (item.roles as readonly string[]).includes(user.role)).map((item) => (
           <NavLink
@@ -122,34 +154,60 @@ function SidebarContent({
       {/* Spacer when no sessions visible */}
       {(!showSessions || collapsed) && <div className="flex-1" />}
 
-      {/* Bottom section: user + theme + logout */}
+      {/* Bottom: avatar + theme toggle + profile menu */}
       <div className="border-t border-sidebar-border px-3 py-2">
-        {/* User row with inline actions */}
-        <div className={`flex items-center gap-2 ${collapsed ? "flex-col" : ""}`}>
-          <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-xs font-semibold shrink-0">
-            {user?.username?.[0]?.toUpperCase() ?? "?"}
-          </div>
-          {!collapsed && (
-            <p className="flex-1 text-sm font-medium truncate text-sidebar-foreground">{user?.username}</p>
-          )}
-          <div className={`flex items-center ${collapsed ? "gap-0.5" : "gap-0.5"}`}>
-            <button
-              onClick={onThemeToggle}
-              className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-              title={resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
-              aria-label="Toggle theme"
+        <div className={`flex items-center ${collapsed ? "flex-col gap-1" : "gap-1"}`}>
+          {/* Profile dropdown on avatar */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={`flex items-center gap-2.5 rounded-lg hover:bg-sidebar-accent transition-colors px-2 py-1.5 ${
+                  collapsed ? "justify-center" : "flex-1 min-w-0"
+                }`}
+              >
+                <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-xs font-semibold shrink-0">
+                  {user?.username?.[0]?.toUpperCase() ?? "?"}
+                </div>
+                {!collapsed && (
+                  <span className="text-sm font-medium truncate text-sidebar-foreground text-left">
+                    {user?.username}
+                  </span>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side={collapsed ? "right" : "top"}
+              align="start"
+              className="w-48"
             >
-              {resolvedTheme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-            </button>
-            <button
-              onClick={onLogout}
-              className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-sidebar-accent transition-colors"
-              title="Log out"
-              aria-label="Log out"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-            </button>
-          </div>
+              {PROFILE_MENU_ITEMS
+                .filter((item) => user && (item.roles as readonly string[]).includes(user.role))
+                .map((item) => (
+                  <DropdownMenuItem
+                    key={item.to}
+                    onClick={() => { onNavigate(item.to); onNavClick?.(); }}
+                  >
+                    <item.icon className="mr-2 h-4 w-4" />
+                    {item.label}
+                  </DropdownMenuItem>
+                ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onLogout} className="text-destructive focus:text-destructive">
+                <LogOut className="mr-2 h-4 w-4" />
+                Log out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Theme toggle beside avatar */}
+          <button
+            onClick={onThemeToggle}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors shrink-0"
+            title={resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
+            aria-label="Toggle theme"
+          >
+            {resolvedTheme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+          </button>
         </div>
       </div>
     </div>
@@ -157,9 +215,11 @@ function SidebarContent({
 }
 
 export default function AppShell() {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
+  const { createNewSession } = useChat();
   const { setTheme, resolvedTheme } = useTheme();
   const location = useLocation();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(() => safeGetItem("sidebar_collapsed") !== "false");
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -173,6 +233,11 @@ export default function AppShell() {
 
   const toggleTheme = () => {
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
+  };
+
+  const handleNewChat = () => {
+    createNewSession();
+    navigate("/chat");
   };
 
   const pageTitle = Object.entries(PAGE_TITLES).find(([path]) =>
@@ -194,12 +259,13 @@ export default function AppShell() {
           resolvedTheme={resolvedTheme}
           onThemeToggle={toggleTheme}
           onLogout={logout}
+          onNavigate={navigate}
+          onNewChat={handleNewChat}
         />
       </aside>
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* TopBar — minimal on chat, full on other pages */}
         {!isChatPage && (
           <header className="flex items-center justify-between h-12 px-4 border-b border-border bg-background shrink-0">
             <div className="flex items-center gap-2">
@@ -217,6 +283,7 @@ export default function AppShell() {
                     resolvedTheme={resolvedTheme}
                     onThemeToggle={toggleTheme}
                     onLogout={logout}
+                    onNavigate={navigate}
                   />
                 </SheetContent>
               </Sheet>
@@ -225,7 +292,6 @@ export default function AppShell() {
           </header>
         )}
 
-        {/* Mobile menu for chat page */}
         {isChatPage && (
           <div className="md:hidden">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -242,6 +308,7 @@ export default function AppShell() {
                   resolvedTheme={resolvedTheme}
                   onThemeToggle={toggleTheme}
                   onLogout={logout}
+                  onNavigate={navigate}
                 />
               </SheetContent>
             </Sheet>
