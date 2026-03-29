@@ -4,21 +4,7 @@ import { queryApi } from "@/lib/query-api";
 import { TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-
-function formatRelative(date: string): string {
-  const timestamp = new Date(date).getTime();
-  const diff = Date.now() - timestamp;
-  const minutes = Math.floor(diff / 60000);
-
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
+import { relativeTime } from "@/utils/date";
 
 export default function PopularQuestionsPage() {
   const [limit, setLimit] = useState(10);
@@ -87,7 +73,7 @@ export default function PopularQuestionsPage() {
                     >
                       <td className="px-4 py-3 font-medium">{item.query}</td>
                       <td className="px-4 py-3 text-muted-foreground">{item.count.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{formatRelative(item.last_asked_at)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{relativeTime(item.last_asked_at)}</td>
                     </tr>
                   ))}
             </tbody>
