@@ -112,7 +112,7 @@ function SidebarContent({ collapsed, onCollapse }: { collapsed: boolean; onColla
 
 export default function AppShell() {
   const { user } = useAuth();
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { setTheme, resolvedTheme } = useTheme();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);

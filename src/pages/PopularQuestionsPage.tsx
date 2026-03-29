@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { adminApi } from "@/lib/admin-api";
+import { queryApi } from "@/lib/query-api";
 import { TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,7 +25,7 @@ export default function PopularQuestionsPage() {
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["popular-questions", limit],
-    queryFn: () => adminApi.getPopularQuestions(limit),
+    queryFn: () => queryApi.getPopularQuestions(limit),
     staleTime: 60000,
     refetchInterval: 180000,
   });

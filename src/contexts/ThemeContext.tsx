@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { safeGetItem, safeSetItem, safeRemoveItem } from "@/lib/storage";
+import { safeGetItem, safeSetItem } from "@/lib/storage";
 
 type Theme = "light" | "dark" | "system";
 

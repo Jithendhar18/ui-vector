@@ -5,6 +5,26 @@
 type SpeechCallback = (transcript: string, isFinal: boolean) => void;
 type StatusCallback = (status: "listening" | "idle" | "error") => void;
 
+interface SpeechRecognitionResult {
+  isFinal: boolean;
+  [index: number]: { transcript: string };
+}
+
+interface SpeechRecognitionInstance {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onresult: ((event: { results: SpeechRecognitionResult[] }) => void) | null;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
 interface SpeechToTextOptions {
   onTranscript: SpeechCallback;
   onStatus: StatusCallback;
@@ -12,7 +32,8 @@ interface SpeechToTextOptions {
   lang?: string;
 }
 
-const SpeechRecognition =
+const SpeechRecognition: SpeechRecognitionConstructor | undefined =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
 export function isSpeechSupported(): boolean {
@@ -53,7 +74,7 @@ export function createSpeechRecognizer(options: SpeechToTextOptions) {
     onStatus("listening");
   };
 
-  recognition.onresult = (event: any) => {
+  recognition.onresult = (event) => {
     clearSilenceTimer();
     let interim = "";
     finalTranscript = "";
@@ -78,7 +99,7 @@ export function createSpeechRecognizer(options: SpeechToTextOptions) {
     }
   };
 
-  recognition.onerror = (event: any) => {
+  recognition.onerror = (event) => {
     if (event.error === "aborted" || event.error === "no-speech") return;
     console.error("Speech recognition error:", event.error);
     onStatus("error");

@@ -38,7 +38,7 @@ export default function IngestionPage() {
   const [taskId, setTaskId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { data: docs, isLoading: docsLoading, refetch: refetchDocs } = useQuery({
+  const { data: docs, isLoading: docsLoading } = useQuery({
     queryKey: ["documents", page, statusFilter],
     queryFn: () =>
       ingestionApi.getDocuments(page, 20, statusFilter === "all" ? undefined : statusFilter),
