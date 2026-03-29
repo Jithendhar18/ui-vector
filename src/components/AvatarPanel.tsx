@@ -32,7 +32,7 @@ export default function AvatarPanel({
   const [state, setState] = useState<AvatarState>("idle");
   const [muted, setMuted] = useState(false);
   const [visible, setVisible] = useState(true);
-  const [wordIndex, setWordIndex] = useState(0);
+  const [, setWordIndex] = useState(0);
   const lastSpokenRef = useRef("");
   const ttsSupported = isTTSSupported();
 

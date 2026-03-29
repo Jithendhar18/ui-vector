@@ -36,6 +36,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setIsLoading(false));
   }, []);
 
+  // Listen for forced logout from API interceptor (e.g. expired refresh token)
+  useEffect(() => {
+    const handleForceLogout = () => setUser(null);
+    window.addEventListener("auth:logout", handleForceLogout);
+    return () => window.removeEventListener("auth:logout", handleForceLogout);
+  }, []);
+
   const login = useCallback(async (username: string, password: string) => {
     const tokens = await authApi.login(username, password);
     safeSetItem("access_token", tokens.access_token);
@@ -55,7 +62,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     safeRemoveItem("access_token");
     safeRemoveItem("refresh_token");
     setUser(null);
-    window.location.href = "/login";
   }, []);
 
   return (

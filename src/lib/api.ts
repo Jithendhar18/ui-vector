@@ -63,7 +63,7 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         safeRemoveItem("access_token");
         safeRemoveItem("refresh_token");
-        window.location.href = "/login";
+        window.dispatchEvent(new Event("auth:logout"));
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

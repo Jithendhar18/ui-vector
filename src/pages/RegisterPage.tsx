@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { RegisterSchema } from "@/features/auth/schemas";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -17,26 +18,22 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const validate = () => {
-    const e: Record<string, string> = {};
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Enter a valid email";
-    if (form.username.length < 3) e.username = "Username must be at least 3 characters";
-    if (form.password.length < 8) e.password = "Password must be at least 8 characters";
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    const result = RegisterSchema.safeParse(form);
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const field = String(issue.path[0]);
+        fieldErrors[field] = issue.message;
+      }
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
     setLoading(true);
     try {
-      await register({
-        email: form.email,
-        username: form.username,
-        password: form.password,
-        ...(form.full_name ? { full_name: form.full_name } : {}),
-      });
+      await register(result.data);
       toast.success("Account created! Please sign in.");
       navigate("/login");
     } catch (err) {

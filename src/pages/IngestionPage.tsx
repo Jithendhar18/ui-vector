@@ -9,28 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-
-const STATUS_COLORS: Record<string, string> = {
-  completed: "bg-success text-success-foreground",
-  processing: "bg-primary text-primary-foreground animate-pulse",
-  failed: "bg-destructive text-destructive-foreground",
-  pending: "bg-warning text-warning-foreground",
-  SUCCESS: "bg-success text-success-foreground",
-  STARTED: "bg-primary text-primary-foreground animate-pulse",
-  FAILURE: "bg-destructive text-destructive-foreground",
-  PENDING: "bg-warning text-warning-foreground",
-};
-
-function relativeTime(date: string | null): string {
-  if (!date) return "—";
-  const d = new Date(date);
-  const diff = Date.now() - d.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
+import { STATUS_COLORS } from "@/utils/status-colors";
+import { relativeTime } from "@/utils/date";
 
 export default function IngestionPage() {
   const [page, setPage] = useState(1);
@@ -38,7 +18,7 @@ export default function IngestionPage() {
   const [taskId, setTaskId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { data: docs, isLoading: docsLoading, refetch: refetchDocs } = useQuery({
+  const { data: docs, isLoading: docsLoading } = useQuery({
     queryKey: ["documents", page, statusFilter],
     queryFn: () =>
       ingestionApi.getDocuments(page, 20, statusFilter === "all" ? undefined : statusFilter),

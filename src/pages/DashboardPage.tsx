@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/lib/admin-api";
 import { FileText, Layers, Users, MessageSquare } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { STATUS_COLORS } from "@/utils/status-colors";
 
 const KPI_CONFIG = [
   { key: "total_documents" as const, label: "Documents", icon: FileText },
@@ -9,13 +10,6 @@ const KPI_CONFIG = [
   { key: "total_users" as const, label: "Users", icon: Users },
   { key: "total_queries" as const, label: "Queries", icon: MessageSquare },
 ];
-
-const STATUS_COLORS: Record<string, string> = {
-  completed: "bg-success",
-  processing: "bg-primary",
-  failed: "bg-destructive",
-  pending: "bg-warning",
-};
 
 export default function DashboardPage() {
   const { data: metrics, isLoading, isError, refetch } = useQuery({

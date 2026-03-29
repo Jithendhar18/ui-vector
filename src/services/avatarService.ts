@@ -13,7 +13,6 @@ interface AvatarServiceOptions {
   pitch?: number;
 }
 
-let currentUtterance: SpeechSynthesisUtterance | null = null;
 let lastSpokenText = "";
 
 export function isTTSSupported(): boolean {
@@ -52,8 +51,6 @@ export function speak(
     options.onStateChange("generating");
 
     const utterance = new SpeechSynthesisUtterance(text);
-    currentUtterance = utterance;
-
     const voice = getPreferredVoice(options.voice);
     if (voice) utterance.voice = voice;
     utterance.rate = options.rate ?? 1.0;
@@ -68,13 +65,11 @@ export function speak(
     };
 
     utterance.onend = () => {
-      currentUtterance = null;
       options.onStateChange("idle");
       resolve();
     };
 
     utterance.onerror = (event) => {
-      currentUtterance = null;
       if (event.error === "canceled" || event.error === "interrupted") {
         options.onStateChange("idle");
         resolve();
@@ -95,7 +90,6 @@ export function stopSpeaking() {
   if (speechSynthesis.speaking) {
     speechSynthesis.cancel();
   }
-  currentUtterance = null;
 }
 
 export function isSpeaking(): boolean {
