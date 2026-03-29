@@ -10,6 +10,8 @@ interface MessageListProps {
   scrollContainerRef: React.RefObject<HTMLDivElement>;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   onScroll: () => void;
+  onSpeak?: (messageId: string, plainText: string) => void;
+  speakingMessageId?: string | null;
 }
 
 export function MessageList({
@@ -20,6 +22,8 @@ export function MessageList({
   scrollContainerRef,
   messagesEndRef,
   onScroll,
+  onSpeak,
+  speakingMessageId,
 }: MessageListProps) {
   return (
     <div
@@ -30,7 +34,12 @@ export function MessageList({
     >
       <div className="max-w-3xl mx-auto space-y-4">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            onSpeak={onSpeak}
+            isSpeaking={msg.id === speakingMessageId}
+          />
         ))}
 
         {streamingMessage && (

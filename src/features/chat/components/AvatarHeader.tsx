@@ -25,8 +25,16 @@ export function AvatarHeader({ state }: AvatarHeaderProps) {
   return (
     <div className="flex flex-col items-center py-4 border-b border-border bg-card/50">
       <div className="relative">
+        {state === "speaking" && (
+          <div className="absolute inset-0 rounded-full bg-success/40 animate-pulse-ring" />
+        )}
+
+        {(state === "processing" || state === "generating") && (
+          <div className="absolute inset-0 rounded-full bg-warning/30 animate-pulse-ring-slow" />
+        )}
+
         <div
-          className={`rounded-full overflow-hidden w-16 h-16 border-2 transition-all duration-500 ${BORDER_CLASS[state]}`}
+          className={`relative rounded-full overflow-hidden w-16 h-16 border-2 transition-all duration-500 ${BORDER_CLASS[state]}`}
         >
           <img
             src={avatarImage}
@@ -34,27 +42,6 @@ export function AvatarHeader({ state }: AvatarHeaderProps) {
             className="w-full h-full object-cover"
           />
         </div>
-
-        {state === "speaking" && (
-          <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex items-end gap-px">
-            {[...Array(5)].map((_, i) => (
-              <span
-                key={i}
-                className="w-0.5 bg-success rounded-full"
-                style={{
-                  height: `${4 + Math.random() * 8}px`,
-                  animation: `waveform 0.5s ease-in-out ${i * 0.07}s infinite alternate`,
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        {(state === "processing" || state === "generating") && (
-          <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2">
-            <div className="h-3 w-3 rounded-full border-[1.5px] border-warning border-t-transparent animate-spin" />
-          </div>
-        )}
       </div>
 
       <p className="mt-2 text-sm font-semibold text-foreground">Andino Support</p>

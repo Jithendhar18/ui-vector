@@ -3,7 +3,8 @@ import type { Message } from "@/features/chat/types";
 
 export function useChatScroll(
   messages: Message[],
-  streamingMessage: Message | null
+  streamingMessage: Message | null,
+  isLoading?: boolean
 ) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -15,6 +16,11 @@ export function useChatScroll(
     const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     setUserScrolledUp(fromBottom > 100);
   }, []);
+
+  // Reset scroll position when a new query starts
+  useEffect(() => {
+    if (isLoading) setUserScrolledUp(false);
+  }, [isLoading]);
 
   useEffect(() => {
     if (!userScrolledUp) {

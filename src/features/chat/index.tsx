@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useChat } from "@/contexts/ChatContext";
 import * as chatService from "@/services/chat-service";
-import { stopSpeaking } from "@/services/avatarService";
+import { speak, stopSpeaking, isSpeaking } from "@/services/avatarService";
 import type { AvatarState } from "@/services/avatarService";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -34,13 +34,15 @@ export default function ChatPage() {
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const [isVoiceListening, setIsVoiceListening] = useState(false);
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
 
   const messages = activeSession?.messages ?? [];
   const isEmpty = messages.length === 0 && !streamingMessage && !isLoading;
 
   const { messagesEndRef, scrollContainerRef, handleScroll } = useChatScroll(
     messages,
-    streamingMessage
+    streamingMessage,
+    isLoading
   );
 
   const { data: popularQuestions, isLoading: isPopularLoading } = useQuery({
@@ -53,10 +55,31 @@ export default function ChatPage() {
     retry: 0,
   });
 
-  // Track avatar state from loading
+  // Track avatar state from loading — never override active speaking
   useEffect(() => {
-    setAvatarState(isLoading ? "processing" : "idle");
-  }, [isLoading]);
+    if (speakingMessageId) return;
+    if (isLoading) setAvatarState("processing");
+    else setAvatarState("idle");
+  }, [isLoading, speakingMessageId]);
+
+  const handleSpeak = useCallback((messageId: string, plainText: string) => {
+    if (speakingMessageId === messageId && isSpeaking()) {
+      stopSpeaking();
+      setSpeakingMessageId(null);
+      setAvatarState("idle");
+      return;
+    }
+    setSpeakingMessageId(messageId);
+    speak(plainText, {
+      onStateChange: (state) => {
+        setAvatarState(state);
+        if (state === "idle") setSpeakingMessageId(null);
+      },
+    }).catch(() => {
+      setSpeakingMessageId(null);
+      setAvatarState("idle");
+    });
+  }, [speakingMessageId]);
 
   // Sync URL → state
   useEffect(() => {
@@ -147,6 +170,8 @@ export default function ChatPage() {
             scrollContainerRef={scrollContainerRef}
             messagesEndRef={messagesEndRef}
             onScroll={handleScroll}
+            onSpeak={handleSpeak}
+            speakingMessageId={speakingMessageId}
           />
         )}
 
