@@ -10,6 +10,7 @@ interface ChatContextValue {
   activeSessionId: string | null;
   isLoading: boolean;
   streamingMessage: Message | null;
+  sessionsLoaded: boolean;
   sendMessage: (query: string) => Promise<void>;
   cancelRequest: () => void;
   createNewSession: () => void;
@@ -27,22 +28,47 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const loadingSessionIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastHistoryFetchRef = useRef<number>(0);
   const loadedSessionIdsRef = useRef<Set<string>>(new Set());
+  const userIdRef = useRef<string | undefined>(undefined);
   const HISTORY_THROTTLE_MS = 10_000;
 
-  // Reset all chat state when user changes (login/logout/switch)
+  // Reset + reload when user changes (login/logout/switch)
   useEffect(() => {
+    const prevUserId = userIdRef.current;
+    const newUserId = user?.id;
+    userIdRef.current = newUserId;
+
+    // Always reset on user change
     abortRef.current?.abort();
     abortRef.current = null;
     setSessions([]);
     setActiveSessionId(null);
     setIsLoading(false);
     setStreamingMessage(null);
+    setSessionsLoaded(false);
     loadedSessionIdsRef.current.clear();
     lastHistoryFetchRef.current = 0;
+
+    // If we have a user, fetch their sessions immediately
+    if (newUserId) {
+      chatService.loadSessions()
+        .then((mapped) => {
+          // Guard: only apply if user hasn't changed again
+          if (userIdRef.current !== newUserId) return;
+          setSessions(mapped);
+          setSessionsLoaded(true);
+          lastHistoryFetchRef.current = Date.now();
+        })
+        .catch(() => {
+          if (userIdRef.current !== newUserId) return;
+          setSessions([]);
+          setSessionsLoaded(true);
+        });
+    }
   }, [user?.id]);
 
   const activeSession = useMemo(
@@ -63,7 +89,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const loadSessionById = useCallback(
     async (sessionId: string) => {
-      // Skip if already loading or already loaded
       if (loadedSessionIdsRef.current.has(sessionId)) return;
       loadedSessionIdsRef.current.add(sessionId);
       loadingSessionIdRef.current = sessionId;
@@ -84,11 +109,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (!force && now - lastHistoryFetchRef.current < HISTORY_THROTTLE_MS) return;
     lastHistoryFetchRef.current = now;
     const mapped = await chatService.loadSessions();
-    // Clear loaded sessions since the list may have changed
     loadedSessionIdsRef.current.clear();
     setSessions((prev) => {
       const previousById = new Map(prev.map((s) => [s.id, s]));
-      // Keep local-only sessions (e.g. greeting responses that never hit the backend)
       const localSessions = prev.filter((s) => s.id.startsWith("local-"));
       const merged = mapped.map((s) => {
         const previous = previousById.get(s.id);
@@ -97,30 +120,22 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       });
       return sortByDate([...localSessions, ...merged]);
     });
-
-    if (activeSessionId && !activeSessionId.startsWith("local-")) {
-      const stillExists = mapped.some((s) => s.id === activeSessionId);
-      if (!stillExists) setActiveSessionId(null);
-    }
-  }, [activeSessionId]);
-
-  useEffect(() => {
-    reloadSessions(true).catch(() => setSessions([]));
-  }, [reloadSessions, user?.id]);
+    setSessionsLoaded(true);
+  }, []);
 
   // Check if active session still exists after reload
   useEffect(() => {
     if (!activeSessionId || activeSessionId.startsWith("local-")) return;
+    if (!sessionsLoaded) return; // don't check before sessions load
     const current = sessions.find((s) => s.id === activeSessionId);
     if (current === undefined) {
       setActiveSessionId(null);
     }
-  }, [activeSessionId, sessions]);
+  }, [activeSessionId, sessions, sessionsLoaded]);
 
   // Load full session history when switching to a non-local session
   useEffect(() => {
     if (!activeSessionId || activeSessionId.startsWith("local-")) return;
-    // Attempt to load if not already loaded (loadSessionById will skip if already loaded)
     loadSessionById(activeSessionId).catch(() => {});
   }, [activeSessionId, loadSessionById]);
 
@@ -205,7 +220,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         ];
         const greetingReply = GREETING_RESPONSES[Math.floor(Math.random() * GREETING_RESPONSES.length)];
 
-        // Brief typing delay so it feels natural (400–600ms)
         await new Promise((r) => setTimeout(r, 400 + Math.random() * 200));
 
         const assistantMessage: Message = {
@@ -367,6 +381,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         activeSessionId,
         isLoading,
         streamingMessage,
+        sessionsLoaded,
         sendMessage,
         cancelRequest,
         createNewSession,

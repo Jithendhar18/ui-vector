@@ -21,6 +21,7 @@ export default function ChatPage() {
     activeSessionId,
     isLoading,
     streamingMessage,
+    sessionsLoaded,
     sendMessage,
     cancelRequest,
     setActiveSession,
@@ -113,19 +114,20 @@ export default function ChatPage() {
     });
   }, [speakingMessageId]);
 
-  // Sync URL → state
+  // Sync URL → state (wait for sessions to load first)
   useEffect(() => {
-    if (sessionId && sessionId !== activeSessionId) {
-      const found = sessions.find((s) => s.id === sessionId);
-      if (found) {
-        setActiveSession(sessionId);
-      } else {
-        toast.error("Session not found");
-        navigate("/chat", { replace: true });
-      }
+    if (!sessionId || sessionId === activeSessionId) return;
+    if (!sessionsLoaded) return; // wait for initial fetch
+
+    const found = sessions.find((s) => s.id === sessionId);
+    if (found) {
+      setActiveSession(sessionId);
+    } else {
+      // Session doesn't belong to this user or was deleted
+      navigate("/chat", { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, sessionsLoaded]);
 
   // Elapsed timer for thinking indicator
   useEffect(() => {
