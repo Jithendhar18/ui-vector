@@ -47,5 +47,10 @@ export function mapApiError(error: AxiosError): ApiError {
   if (config.isDev) {
     console.error("[API Error]", { status, detail });
   }
-  return { status, detail, ...mapped };
+  return {
+    status,
+    detail,
+    message: detail !== error.message ? detail : mapped.message,
+    retryable: mapped.retryable,
+  };
 }

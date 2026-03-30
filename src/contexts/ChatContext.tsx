@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AxiosError } from "axios";
 import { mapApiError } from "@/lib/api-error";
+import { useAuth } from "@/contexts/AuthContext";
 import * as chatService from "@/services/chat-service";
 import type { ChatSession, Message, SourceDocument } from "@/features/chat/types";
 
@@ -21,12 +22,23 @@ interface ChatContextValue {
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
   const loadingSessionIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Reset all chat state when user changes (login/logout/switch)
+  useEffect(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setSessions([]);
+    setActiveSessionId(null);
+    setIsLoading(false);
+    setStreamingMessage(null);
+  }, [user?.id]);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId) ?? null,
@@ -77,7 +89,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const stillExists = mapped.some((s) => s.id === activeSessionId);
       if (!stillExists) setActiveSessionId(null);
     }
-  }, [activeSessionId]);
+  }, [activeSessionId, user?.id]);
 
   useEffect(() => {
     reloadSessions().catch(() => setSessions([]));
