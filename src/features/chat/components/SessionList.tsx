@@ -51,7 +51,7 @@ export function SessionList({ onClose }: SessionListProps) {
                   <div className="flex-1 min-w-0">
                     <p className="truncate text-sm">{session.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {session.messageCount ?? session.messages.length} msgs &bull; {relativeTime(session.lastMessageAt ?? session.updatedAt, "No messages")}
+                      {relativeTime(session.lastMessageAt ?? session.updatedAt, "No messages")}
                     </p>
                   </div>
                   <button

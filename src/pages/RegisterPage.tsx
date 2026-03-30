@@ -13,10 +13,11 @@ import { RegisterSchema } from "@/features/auth/schemas";
 export default function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: "", username: "", password: "", full_name: "" });
+  const [form, setForm] = useState({ email: "", username: "", password: "", confirmPassword: "", full_name: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [apiError, setApiError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,17 +29,20 @@ export default function RegisterPage() {
         fieldErrors[field] = issue.message;
       }
       setErrors(fieldErrors);
+      setApiError("");
       return;
     }
     setErrors({});
+    setApiError("");
     setLoading(true);
     try {
-      await register(result.data);
+      const { confirmPassword: _, ...payload } = result.data;
+      await register(payload);
       toast.success("Account created! Please sign in.");
       navigate("/login");
     } catch (err) {
       const apiErr = err instanceof AxiosError ? mapApiError(err) : null;
-      toast.error(apiErr?.message ?? "Registration failed.");
+      setApiError(apiErr?.message ?? "Registration failed.");
     } finally {
       setLoading(false);
     }
@@ -110,6 +114,20 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm password</Label>
+              <Input
+                id="confirmPassword"
+                type={showPassword ? "text" : "password"}
+                value={form.confirmPassword}
+                onChange={(e) => updateField("confirmPassword", e.target.value)}
+                placeholder="Re-enter your password"
+                className="rounded-xl"
+                aria-label="Confirm password"
+              />
+              {errors.confirmPassword && <p className="text-xs text-destructive">{errors.confirmPassword}</p>}
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="full_name">Full name (optional)</Label>
               <Input
                 id="full_name"
@@ -120,6 +138,12 @@ export default function RegisterPage() {
                 aria-label="Full name"
               />
             </div>
+
+            {apiError && (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {apiError}
+              </div>
+            )}
 
             <Button type="submit" className="w-full rounded-xl" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

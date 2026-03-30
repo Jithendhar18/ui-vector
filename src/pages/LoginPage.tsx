@@ -1,13 +1,10 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { mapApiError } from "@/lib/api-error";
-import { AxiosError } from "axios";
 import { BookOpen, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
 import { LoginSchema } from "@/features/auth/schemas";
 
 export default function LoginPage() {
@@ -18,6 +15,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
+  const [apiError, setApiError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,16 +27,17 @@ export default function LoginPage() {
         fieldErrors[field] = issue.message;
       }
       setErrors(fieldErrors);
+      setApiError("");
       return;
     }
     setErrors({});
+    setApiError("");
     setLoading(true);
     try {
       await login(result.data.username, result.data.password);
       navigate("/chat");
-    } catch (err) {
-      const apiErr = err instanceof AxiosError ? mapApiError(err) : null;
-      toast.error(apiErr?.message ?? "Login failed. Please try again.");
+    } catch {
+      setApiError("Invalid username or password.");
     } finally {
       setLoading(false);
     }
@@ -55,14 +54,14 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username">Username or Email</Label>
               <Input
                 id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
+                placeholder="Enter your username or email"
                 className="rounded-xl"
-                aria-label="Username"
+                aria-label="Username or Email"
                 autoFocus
               />
               {errors.username && <p className="text-xs text-destructive">{errors.username}</p>}
@@ -91,6 +90,12 @@ export default function LoginPage() {
               </div>
               {errors.password && <p className="text-xs text-destructive">{errors.password}</p>}
             </div>
+
+            {apiError && (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {apiError}
+              </div>
+            )}
 
             <Button
               type="submit"

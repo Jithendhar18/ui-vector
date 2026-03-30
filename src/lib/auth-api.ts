@@ -13,4 +13,7 @@ export const authApi = {
 
   getMe: () =>
     api.get<UserResponse>("/auth/me").then((r) => r.data),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.put("/auth/change-password", { current_password: currentPassword, new_password: newPassword }).then((r) => r.data),
 };

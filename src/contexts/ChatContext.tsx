@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AxiosError } from "axios";
 import { mapApiError } from "@/lib/api-error";
+import { useAuth } from "@/contexts/AuthContext";
 import * as chatService from "@/services/chat-service";
 import type { ChatSession, Message, SourceDocument } from "@/features/chat/types";
 
@@ -21,6 +22,7 @@ interface ChatContextValue {
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,6 +32,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const lastHistoryFetchRef = useRef<number>(0);
   const loadedSessionIdsRef = useRef<Set<string>>(new Set());
   const HISTORY_THROTTLE_MS = 10_000;
+
+  // Reset all chat state when user changes (login/logout/switch)
+  useEffect(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setSessions([]);
+    setActiveSessionId(null);
+    setIsLoading(false);
+    setStreamingMessage(null);
+    loadedSessionIdsRef.current.clear();
+    lastHistoryFetchRef.current = 0;
+  }, [user?.id]);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId) ?? null,
@@ -83,11 +97,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       });
       return sortByDate([...localSessions, ...merged]);
     });
-  }, []);
+
+    if (activeSessionId && !activeSessionId.startsWith("local-")) {
+      const stillExists = mapped.some((s) => s.id === activeSessionId);
+      if (!stillExists) setActiveSessionId(null);
+    }
+  }, [activeSessionId]);
 
   useEffect(() => {
     reloadSessions(true).catch(() => setSessions([]));
-  }, [reloadSessions]);
+  }, [reloadSessions, user?.id]);
 
   // Check if active session still exists after reload
   useEffect(() => {
