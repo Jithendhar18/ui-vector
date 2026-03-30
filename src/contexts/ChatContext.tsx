@@ -15,7 +15,7 @@ interface ChatContextValue {
   setActiveSession: (id: string) => void;
   deleteSession: (id: string) => Promise<void>;
   activeSession: ChatSession | null;
-  reloadSessions: () => Promise<void>;
+  reloadSessions: (force?: boolean) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -27,6 +27,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
   const loadingSessionIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const lastHistoryFetchRef = useRef<number>(0);
+  const loadedSessionIdsRef = useRef<Set<string>>(new Set());
+  const HISTORY_THROTTLE_MS = 10_000;
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId) ?? null,
@@ -46,6 +49,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const loadSessionById = useCallback(
     async (sessionId: string) => {
+      // Skip if already loading or already loaded
+      if (loadedSessionIdsRef.current.has(sessionId)) return;
+      loadedSessionIdsRef.current.add(sessionId);
       loadingSessionIdRef.current = sessionId;
       try {
         const session = await chatService.loadSessionById(sessionId);
@@ -59,8 +65,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [replaceSession]
   );
 
-  const reloadSessions = useCallback(async () => {
+  const reloadSessions = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastHistoryFetchRef.current < HISTORY_THROTTLE_MS) return;
+    lastHistoryFetchRef.current = now;
     const mapped = await chatService.loadSessions();
+    // Clear loaded sessions since the list may have changed
+    loadedSessionIdsRef.current.clear();
     setSessions((prev) => {
       const previousById = new Map(prev.map((s) => [s.id, s]));
       // Keep local-only sessions (e.g. greeting responses that never hit the backend)
@@ -72,24 +83,27 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       });
       return sortByDate([...localSessions, ...merged]);
     });
-
-    if (activeSessionId && !activeSessionId.startsWith("local-")) {
-      const stillExists = mapped.some((s) => s.id === activeSessionId);
-      if (!stillExists) setActiveSessionId(null);
-    }
-  }, [activeSessionId]);
+  }, []);
 
   useEffect(() => {
-    reloadSessions().catch(() => setSessions([]));
+    reloadSessions(true).catch(() => setSessions([]));
   }, [reloadSessions]);
 
+  // Check if active session still exists after reload
   useEffect(() => {
     if (!activeSessionId || activeSessionId.startsWith("local-")) return;
     const current = sessions.find((s) => s.id === activeSessionId);
-    if (!current || current.messages.length === 0) {
-      loadSessionById(activeSessionId).catch(() => {});
+    if (current === undefined) {
+      setActiveSessionId(null);
     }
-  }, [activeSessionId, loadSessionById, sessions]);
+  }, [activeSessionId, sessions]);
+
+  // Load full session history when switching to a non-local session
+  useEffect(() => {
+    if (!activeSessionId || activeSessionId.startsWith("local-")) return;
+    // Attempt to load if not already loaded (loadSessionById will skip if already loaded)
+    loadSessionById(activeSessionId).catch(() => {});
+  }, [activeSessionId, loadSessionById]);
 
   const createNewSession = useCallback(() => {
     abortRef.current?.abort();
