@@ -25,7 +25,12 @@ const ChatContext = createContext<ChatContextValue | null>(null);
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionId, _setActiveSessionId] = useState<string | null>(null);
+  const setActiveSessionId = (id: string | null) => {
+    console.log("[DEBUG setActiveSessionId]", { from: activeSessionIdRef.current, to: id });
+    activeSessionIdRef.current = id;
+    _setActiveSessionId(id);
+  };
   const [isLoading, setIsLoading] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
@@ -34,11 +39,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const lastHistoryFetchRef = useRef<number>(0);
   const loadedSessionIdsRef = useRef<Set<string>>(new Set());
   const userIdRef = useRef<string | undefined>(undefined);
+  const activeSessionIdRef = useRef<string | null>(null);
   const HISTORY_THROTTLE_MS = 10_000;
 
   // Reset + reload when user changes (login/logout/switch)
   useEffect(() => {
-    const prevUserId = userIdRef.current;
     const newUserId = user?.id;
     userIdRef.current = newUserId;
 
@@ -111,27 +116,37 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const mapped = await chatService.loadSessions();
     loadedSessionIdsRef.current.clear();
     setSessions((prev) => {
+      const mappedIds = new Set(mapped.map((s) => s.id));
       const previousById = new Map(prev.map((s) => [s.id, s]));
-      const localSessions = prev.filter((s) => s.id.startsWith("local-"));
+
+      // Keep sessions that exist locally but not on the backend yet
+      const unsyncedSessions = prev.filter((s) => !mappedIds.has(s.id));
+
       const merged = mapped.map((s) => {
         const previous = previousById.get(s.id);
         if (!previous || previous.messages.length === 0) return s;
         return { ...s, messages: previous.messages };
       });
-      return sortByDate([...localSessions, ...merged]);
+
+      // Dedup by id (in case unsynced + merged overlap after ID replacement)
+      const seen = new Set<string>();
+      const deduped = [...unsyncedSessions, ...merged].filter((s) => {
+        if (seen.has(s.id)) return false;
+        seen.add(s.id);
+        return true;
+      });
+      return sortByDate(deduped);
     });
     setSessionsLoaded(true);
   }, []);
 
-  // Check if active session still exists after reload
-  useEffect(() => {
-    if (!activeSessionId || activeSessionId.startsWith("local-")) return;
-    if (!sessionsLoaded) return; // don't check before sessions load
-    const current = sessions.find((s) => s.id === activeSessionId);
-    if (current === undefined) {
-      setActiveSessionId(null);
-    }
-  }, [activeSessionId, sessions, sessionsLoaded]);
+  // Note: We intentionally do NOT check if activeSessionId exists in sessions
+  // after every sessions mutation. The sendMessage flow replaces local-* IDs
+  // with backend UUIDs in a two-step state update (sessions + activeSessionId),
+  // and checking between those updates would incorrectly reset the session.
+  // Session validity is ensured by:
+  // 1. The initial load (sessionsLoaded effect)
+  // 2. The URL sync in ChatPage (checks sessionsLoaded before setting)
 
   // Load full session history when switching to a non-local session
   useEffect(() => {
@@ -166,15 +181,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     async (id: string) => {
       await chatService.deleteSession(id);
       setSessions((prev) => prev.filter((s) => s.id !== id));
-      if (activeSessionId === id) setActiveSessionId(null);
+      if (activeSessionIdRef.current === id) setActiveSessionId(null);
     },
-    [activeSessionId]
+    []
   );
 
   const sendMessage = useCallback(
     async (query: string) => {
       const trimmed = query.trim();
       if (!trimmed || isLoading) return;
+
+      // Read latest activeSessionId from ref to avoid stale closure
+      const currentSessionId = activeSessionIdRef.current;
+      console.log("[DEBUG sendMessage] START", { currentSessionId });
 
       const userMessage: Message = {
         id: crypto.randomUUID(),
@@ -184,19 +203,27 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         status: "done",
       };
 
-      const ephemeralId = activeSessionId ?? `local-${crypto.randomUUID()}`;
-      const existing = sessions.find((s) => s.id === activeSessionId);
+      const ephemeralId = currentSessionId ?? `local-${crypto.randomUUID()}`;
       const now = new Date().toISOString();
 
-      if (existing) {
-        replaceSession({
-          ...existing,
-          messages: [...existing.messages, userMessage],
-          updatedAt: now,
-          messageCount: (existing.messageCount ?? existing.messages.length) + 1,
-          lastMessageAt: now,
-        });
-      } else {
+      // Use functional update to read latest sessions (avoids stale closure)
+      setSessions((prev) => {
+        const existing = prev.find((s) => s.id === ephemeralId);
+        if (existing) {
+          return sortByDate(
+            prev.map((s) =>
+              s.id === ephemeralId
+                ? {
+                    ...s,
+                    messages: [...s.messages, userMessage],
+                    updatedAt: now,
+                    messageCount: (s.messageCount ?? s.messages.length) + 1,
+                    lastMessageAt: now,
+                  }
+                : s
+            )
+          );
+        }
         const newSession: ChatSession = {
           id: ephemeralId,
           title: trimmed.slice(0, 60),
@@ -206,13 +233,24 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           messageCount: 1,
           lastMessageAt: now,
         };
-        setSessions((prev) => sortByDate([newSession, ...prev]));
-        setActiveSessionId(ephemeralId);
-      }
+        return sortByDate([newSession, ...prev]);
+      });
+      if (!currentSessionId) setActiveSessionId(ephemeralId);
 
-      // Greeting detection — skip RAG pipeline for simple greetings
-      const GREETING_PATTERN = /^(hi|hello|hey|howdy|good\s*(morning|afternoon|evening)|what'?s\s*up|sup|yo)[\s!?.]*$/i;
-      if (GREETING_PATTERN.test(trimmed)) {
+      // Greeting detection — strip punctuation/quotes, collapse repeated chars (hiiiii→hi)
+      const greetingText = trimmed
+        .replace(/["""''`.,!?;:\-_]/g, "")
+        .trim()
+        .toLowerCase()
+        .replace(/(.)\1{2,}/g, "$1$1"); // collapse 3+ repeated chars to 2
+      const GREETING_WORDS = new Set([
+        "hi", "hii", "hello", "helloo", "hey", "heyy", "howdy", "sup", "yo", "hola", "heya",
+        "thanks", "thank", "thankyou", "thx", "ok", "okay", "bye", "goodbye",
+      ]);
+      const GREETING_PHRASES = ["good morning", "good afternoon", "good evening", "good night", "whats up", "what's up"];
+      const isGreeting = GREETING_WORDS.has(greetingText) || GREETING_PHRASES.some((p) => greetingText === p);
+      console.log("[DEBUG greeting]", { trimmed, greetingText, isGreeting });
+      if (isGreeting) {
         const GREETING_RESPONSES = [
           "Hello! How can I help you with your documentation today?",
           "Hi there! What would you like to know about your docs?",
@@ -277,16 +315,23 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           response: "Finalizing...",
         };
 
+        const latestSessionId = activeSessionIdRef.current;
+        const sessionIdToSend = latestSessionId?.startsWith("local-") ? undefined : latestSessionId ?? undefined;
+        console.log("[DEBUG sendMessage] SENDING to backend", { sessionIdToSend, latestSessionId });
+
         for await (const event of chatService.streamMessage(
           trimmed,
           5,
-          activeSessionId?.startsWith("local-") ? undefined : activeSessionId ?? undefined,
+          sessionIdToSend,
           controller.signal
         )) {
           if (controller.signal.aborted) return;
 
           if (event.error) throw new Error(event.error);
-          if (event.session_id) finalSessionId = event.session_id;
+          if (event.session_id) {
+            console.log("[DEBUG sendMessage] GOT session_id from backend", { finalSessionId: event.session_id });
+            finalSessionId = event.session_id;
+          }
           if (event.latency_ms) finalLatency = event.latency_ms;
 
           if (event.answer) {
@@ -335,6 +380,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             })
           )
         );
+        console.log("[DEBUG sendMessage] SETTING activeSessionId", { resolvedSessionId, previous: activeSessionIdRef.current });
         setActiveSessionId(resolvedSessionId);
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -371,7 +417,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         reloadSessions().catch(() => {});
       }
     },
-    [activeSessionId, isLoading, reloadSessions, replaceSession, sessions]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isLoading, reloadSessions]
   );
 
   return (
