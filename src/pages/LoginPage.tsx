@@ -36,8 +36,23 @@ export default function LoginPage() {
     try {
       await login(result.data.username, result.data.password);
       navigate("/chat");
-    } catch {
-      setApiError("Invalid username or password.");
+    } catch (error: unknown) {
+      // Handle axios errors
+      const axiosError = error as { response?: { status: number } };
+      
+      if (!axiosError.response) {
+        // Network error or server unreachable
+        setApiError("Unable to connect. Please check your connection and try again.");
+      } else if (axiosError.response.status === 401) {
+        // Unauthorized - invalid credentials
+        setApiError("Invalid username or password.");
+      } else if (axiosError.response.status >= 500) {
+        // Server error
+        setApiError("Something went wrong. Please try again later.");
+      } else {
+        // Other HTTP errors
+        setApiError("Login failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
