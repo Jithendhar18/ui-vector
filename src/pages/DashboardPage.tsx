@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/lib/admin-api";
-import { FileText, Layers, Users, MessageSquare } from "lucide-react";
+import { AlertCircle, FileText, Layers, Users, MessageSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { STATUS_COLORS } from "@/utils/status-colors";
 
@@ -51,6 +52,16 @@ export default function DashboardPage() {
         <h2 className="text-lg font-semibold mb-4">Documents by Status</h2>
         {isLoading ? (
           <Skeleton className="h-8 w-full rounded-xl" />
+        ) : isError ? (
+          <div className="flex items-center justify-between p-4 rounded-xl border border-destructive/30 bg-destructive/5">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              <span className="text-sm text-destructive">Failed to load status data</span>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
         ) : metrics?.documents_by_status ? (
           <>
             <div className="flex h-8 rounded-xl overflow-hidden">
@@ -91,6 +102,16 @@ export default function DashboardPage() {
             <Skeleton className="h-4 w-48 rounded" />
             <Skeleton className="h-4 w-36 rounded" />
           </div>
+        ) : isError ? (
+          <div className="flex items-center justify-between p-4 rounded-xl border border-destructive/30 bg-destructive/5">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              <span className="text-sm text-destructive">Failed to load system data</span>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
         ) : (
           <div className="flex flex-wrap gap-8 text-sm">
             <div>
@@ -112,11 +133,19 @@ export default function DashboardPage() {
       </div>
 
       {isError && (
-        <div className="text-center">
-          <p className="text-sm text-destructive mb-2">Failed to load metrics</p>
-          <button onClick={() => refetch()} className="text-sm text-primary hover:underline">
-            Retry
-          </button>
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-6 w-6 text-destructive" />
+              <div>
+                <h3 className="font-semibold text-destructive">Failed to load metrics</h3>
+                <p className="text-sm text-destructive/80">Please try again or contact support if the problem persists.</p>
+              </div>
+            </div>
+            <Button onClick={() => refetch()} variant="outline" size="sm">
+              Retry
+            </Button>
+          </div>
         </div>
       )}
     </div>

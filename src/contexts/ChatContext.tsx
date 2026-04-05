@@ -3,6 +3,7 @@ import { AxiosError } from "axios";
 import { mapApiError } from "@/lib/api-error";
 import { useAuth } from "@/contexts/AuthContext";
 import * as chatService from "@/services/chat-service";
+import { toast } from "sonner";
 import type { ChatSession, Message, SourceDocument } from "@/features/chat/types";
 
 interface ChatContextValue {
@@ -27,7 +28,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, _setActiveSessionId] = useState<string | null>(null);
   const setActiveSessionId = (id: string | null) => {
-    console.log("[DEBUG setActiveSessionId]", { from: activeSessionIdRef.current, to: id });
     activeSessionIdRef.current = id;
     _setActiveSessionId(id);
   };
@@ -68,8 +68,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           setSessionsLoaded(true);
           lastHistoryFetchRef.current = Date.now();
         })
-        .catch(() => {
+        .catch((error) => {
           if (userIdRef.current !== newUserId) return;
+          console.error("[Chat] Failed to load sessions:", error);
           setSessions([]);
           setSessionsLoaded(true);
         });
@@ -151,7 +152,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   // Load full session history when switching to a non-local session
   useEffect(() => {
     if (!activeSessionId || activeSessionId.startsWith("local-")) return;
-    loadSessionById(activeSessionId).catch(() => {});
+    loadSessionById(activeSessionId).catch((error) => {
+      console.error("[Chat] Failed to load session history:", error);
+    });
   }, [activeSessionId, loadSessionById]);
 
   const createNewSession = useCallback(() => {
@@ -193,7 +196,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       // Read latest activeSessionId from ref to avoid stale closure
       const currentSessionId = activeSessionIdRef.current;
-      console.log("[DEBUG sendMessage] START", { currentSessionId });
 
       const userMessage: Message = {
         id: crypto.randomUUID(),
@@ -249,7 +251,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       ]);
       const GREETING_PHRASES = ["good morning", "good afternoon", "good evening", "good night", "whats up", "what's up"];
       const isGreeting = GREETING_WORDS.has(greetingText) || GREETING_PHRASES.some((p) => greetingText === p);
-      console.log("[DEBUG greeting]", { trimmed, greetingText, isGreeting });
       if (isGreeting) {
         const GREETING_RESPONSES = [
           "Hello! How can I help you with your documentation today?",
@@ -317,7 +318,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
         const latestSessionId = activeSessionIdRef.current;
         const sessionIdToSend = latestSessionId?.startsWith("local-") ? undefined : latestSessionId ?? undefined;
-        console.log("[DEBUG sendMessage] SENDING to backend", { sessionIdToSend, latestSessionId });
 
         for await (const event of chatService.streamMessage(
           trimmed,
@@ -329,7 +329,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
           if (event.error) throw new Error(event.error);
           if (event.session_id) {
-            console.log("[DEBUG sendMessage] GOT session_id from backend", { finalSessionId: event.session_id });
             finalSessionId = event.session_id;
           }
           if (event.latency_ms) finalLatency = event.latency_ms;
@@ -380,10 +379,47 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             })
           )
         );
-        console.log("[DEBUG sendMessage] SETTING activeSessionId", { resolvedSessionId, previous: activeSessionIdRef.current });
         setActiveSessionId(resolvedSessionId);
       } catch (error) {
         if (controller.signal.aborted) return;
+
+        // Fallback: try non-streaming endpoint if stream failed
+        try {
+          const latestSessionId = activeSessionIdRef.current;
+          const sessionIdToSend = latestSessionId?.startsWith("local-") ? undefined : latestSessionId ?? undefined;
+          const fallbackResult = await chatService.queryNonStreaming(trimmed, 5, sessionIdToSend);
+
+          const assistantMessage: Message = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: fallbackResult.answer,
+            sources: fallbackResult.sources,
+            latency_ms: fallbackResult.latency_ms,
+            timestamp: new Date().toISOString(),
+            status: "done",
+          };
+
+          const resolvedSessionId = fallbackResult.session_id ?? ephemeralId;
+          setSessions((prev) =>
+            sortByDate(
+              prev.map((s) => {
+                if (s.id !== ephemeralId) return s;
+                return {
+                  ...s,
+                  id: resolvedSessionId,
+                  messages: [...s.messages, assistantMessage],
+                  updatedAt: new Date().toISOString(),
+                  messageCount: (s.messageCount ?? s.messages.length) + 1,
+                  lastMessageAt: new Date().toISOString(),
+                };
+              })
+            )
+          );
+          setActiveSessionId(resolvedSessionId);
+          return;
+        } catch {
+          // Both stream and fallback failed — show original error
+        }
 
         const apiError =
           error instanceof AxiosError
@@ -410,11 +446,23 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               : s
           )
         );
+        
+        // Show error toast with retry hint if retryable
+        if (apiError.retryable) {
+          toast.error(apiError.message, {
+            description: "You can try sending the message again.",
+            duration: 5000,
+          });
+        } else {
+          toast.error(apiError.message, { duration: 5000 });
+        }
       } finally {
         setIsLoading(false);
         setStreamingMessage(null);
         abortRef.current = null;
-        reloadSessions().catch(() => {});
+        reloadSessions().catch((error) => {
+          console.error("[Chat] Failed to reload sessions:", error);
+        });
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { AxiosError } from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { authApi } from "@/lib/auth-api";
+import { mapApiError } from "@/lib/api-error";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,12 +57,16 @@ export default function SettingsPage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      toast.success("Password updated");
       setTimeout(() => {
         setShowPwForm(false);
         setPwSuccess("");
       }, 2000);
-    } catch {
-      setPwError("Current password is incorrect.");
+    } catch (error) {
+      const apiErr = error instanceof AxiosError ? mapApiError(error) : null;
+      const message = apiErr?.message ?? "Failed to update password.";
+      setPwError(message);
+      toast.error(message);
     } finally {
       setPwLoading(false);
     }

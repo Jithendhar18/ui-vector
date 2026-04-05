@@ -42,7 +42,9 @@ export default function RegisterPage() {
       navigate("/login");
     } catch (err) {
       const apiErr = err instanceof AxiosError ? mapApiError(err) : null;
-      setApiError(apiErr?.message ?? "Registration failed.");
+      const message = apiErr?.message ?? "Registration failed.";
+      setApiError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }

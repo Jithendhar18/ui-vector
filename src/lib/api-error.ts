@@ -39,18 +39,22 @@ function parseDetail(data: unknown, fallback: string): string {
 
 export function mapApiError(error: AxiosError): ApiError {
   const status = error.response?.status ?? 0;
-  const detail = parseDetail(error.response?.data, error.message);
+  // Parse detail from response, with empty string fallback (not error.message)
+  // This way we can distinguish between "no detail provided" and "has detail"
+  const detail = parseDetail(error.response?.data, "");
   const mapped = ERROR_MAP[status] ?? {
     message: "An unexpected error occurred.",
     retryable: true,
   };
   if (config.isDev) {
-    console.error("[API Error]", { status, detail });
+    console.error("[API Error]", { status, detail, statusText: error.response?.statusText });
   }
+  // Prefer API's detail message over generic status-code mapping
+  // Only use mapped message if detail is not provided by server
   return {
     status,
     detail,
-    message: detail !== error.message ? detail : mapped.message,
+    message: detail || mapped.message,
     retryable: mapped.retryable,
   };
 }

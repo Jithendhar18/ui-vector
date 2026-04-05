@@ -4,7 +4,7 @@ import { adminApi } from "@/lib/admin-api";
 import { mapApiError } from "@/lib/api-error";
 import { AxiosError } from "axios";
 import type { Role } from "@/types";
-import { Pencil } from "lucide-react";
+import { AlertCircle, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -94,9 +94,19 @@ export default function UsersPage() {
       </div>
 
       {isError && (
-        <div className="text-center mt-4">
-          <p className="text-sm text-destructive">Failed to load users</p>
-          <button onClick={() => refetch()} className="text-sm text-primary hover:underline mt-1">Retry</button>
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 mt-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-6 w-6 text-destructive" />
+              <div>
+                <h3 className="font-semibold text-destructive">Failed to load users</h3>
+                <p className="text-sm text-destructive/80">Please try again or contact support if the problem persists.</p>
+              </div>
+            </div>
+            <Button onClick={() => refetch()} variant="outline" size="sm">
+              Retry
+            </Button>
+          </div>
         </div>
       )}
 

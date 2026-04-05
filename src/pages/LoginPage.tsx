@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { AxiosError } from "axios";
 import { useAuth } from "@/contexts/AuthContext";
+import { mapApiError } from "@/lib/api-error";
 import { BookOpen, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import { LoginSchema } from "@/features/auth/schemas";
 
 export default function LoginPage() {
@@ -35,24 +38,13 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(result.data.username, result.data.password);
+      toast.success("Welcome back!");
       navigate("/chat");
     } catch (error: unknown) {
-      // Handle axios errors
-      const axiosError = error as { response?: { status: number } };
-      
-      if (!axiosError.response) {
-        // Network error or server unreachable
-        setApiError("Unable to connect. Please check your connection and try again.");
-      } else if (axiosError.response.status === 401) {
-        // Unauthorized - invalid credentials
-        setApiError("Invalid username or password.");
-      } else if (axiosError.response.status >= 500) {
-        // Server error
-        setApiError("Something went wrong. Please try again later.");
-      } else {
-        // Other HTTP errors
-        setApiError("Login failed. Please try again.");
-      }
+      const apiErr = error instanceof AxiosError ? mapApiError(error) : null;
+      const message = apiErr?.message ?? "Login failed. Please try again.";
+      setApiError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }

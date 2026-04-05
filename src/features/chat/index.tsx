@@ -129,6 +129,14 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, sessionsLoaded]);
 
+  // Sync state → URL (keep URL in sync when activeSessionId changes)
+  useEffect(() => {
+    if (!activeSessionId || activeSessionId.startsWith("local-")) return;
+    if (sessionId === activeSessionId) return; // already in sync
+    navigate(`/chat/${activeSessionId}`, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
+
   // Elapsed timer for thinking indicator
   useEffect(() => {
     if (!isLoading) {

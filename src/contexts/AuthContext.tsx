@@ -29,7 +29,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     authApi
       .getMe()
       .then(setUser)
-      .catch(() => {
+      .catch((error) => {
+        // Clear tokens if validation fails or user is not found
+        console.error("[Auth] Failed to fetch user profile:", error);
         safeRemoveItem("access_token");
         safeRemoveItem("refresh_token");
       })
@@ -44,11 +46,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
-    const tokens = await authApi.login(username, password);
-    safeSetItem("access_token", tokens.access_token);
-    safeSetItem("refresh_token", tokens.refresh_token);
-    const me = await authApi.getMe();
-    setUser(me);
+    try {
+      const tokens = await authApi.login(username, password);
+      safeSetItem("access_token", tokens.access_token);
+      safeSetItem("refresh_token", tokens.refresh_token);
+      const me = await authApi.getMe();
+      setUser(me);
+    } catch (error) {
+      // Clear tokens on any login error
+      safeRemoveItem("access_token");
+      safeRemoveItem("refresh_token");
+      throw error;
+    }
   }, []);
 
   const register = useCallback(

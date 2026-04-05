@@ -90,8 +90,10 @@ export async function* streamMessage(
     if (parsed.success) {
       yield parsed.data;
     } else {
-      // Log malformed event in dev, skip it rather than crash the stream
-      console.warn("[chat-service] Malformed stream event:", parsed.error.issues);
+      // Still extract session_id to prevent orphaned local sessions
+      if (raw && typeof raw === "object" && "session_id" in raw && typeof (raw as Record<string, unknown>).session_id === "string") {
+        yield { session_id: (raw as Record<string, unknown>).session_id as string };
+      }
     }
   }
 }
@@ -99,4 +101,22 @@ export async function* streamMessage(
 export async function getPopularQuestions(limit: number = 6): Promise<FrequentQuestion[]> {
   const raw = await queryApi.getPopularQuestions(limit);
   return z.array(FrequentQuestionSchema).parse(raw);
+}
+
+/**
+ * Non-streaming query fallback — used when the SSE stream fails.
+ * Always returns a session_id from the backend.
+ */
+export async function queryNonStreaming(
+  query: string,
+  topK: number = 5,
+  sessionId?: string
+): Promise<{ answer: string; sources: QueryStreamEvent["sources"]; session_id: string; latency_ms?: number }> {
+  const raw = await queryApi.query(query, topK, sessionId);
+  return {
+    answer: raw.answer,
+    sources: raw.sources,
+    session_id: raw.session_id,
+    latency_ms: raw.latency_ms,
+  };
 }
