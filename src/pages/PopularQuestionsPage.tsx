@@ -71,7 +71,7 @@ export default function PopularQuestionsPage() {
                       key={`${item.query}-${item.last_asked_at}`}
                       className="border-b border-border hover:bg-secondary/30 transition-colors"
                     >
-                      <td className="px-4 py-3 font-medium">{item.query}</td>
+                      <td className="px-4 py-3 font-medium">{item.query?.replace(/^["'\s]+|["'\s]+$/g, "").trim()}</td>
                       <td className="px-4 py-3 text-muted-foreground">{item.count.toLocaleString()}</td>
                       <td className="px-4 py-3 text-muted-foreground">{relativeTime(item.last_asked_at)}</td>
                     </tr>

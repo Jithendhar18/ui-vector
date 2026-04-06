@@ -46,7 +46,9 @@ export default function ChatPage() {
     queryKey: ["chat-popular-questions"],
     queryFn: async () => {
       const result = await chatService.getPopularQuestions(6);
-      return result.map((item) => item.query).filter(Boolean);
+      return result
+        .map((item) => item.query?.replace(/^["'\s]+|["'\s]+$/g, "").trim())
+        .filter(Boolean);
     },
     staleTime: 120_000,
     retry: 0,

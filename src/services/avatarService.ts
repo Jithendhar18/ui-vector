@@ -19,17 +19,28 @@ export function isTTSSupported(): boolean {
   return "speechSynthesis" in window;
 }
 
+// Priority list of natural-sounding English voices
+const PREFERRED_VOICE_NAMES = [
+  "Google UK English Female",
+  "Google US English",
+  "Microsoft Zira",
+  "Samantha",
+  "Karen",
+  "Moira",
+  "Tessa",
+];
+
 function getPreferredVoice(preferredName?: string): SpeechSynthesisVoice | null {
   const voices = speechSynthesis.getVoices();
   if (preferredName) {
     const match = voices.find((v) => v.name.includes(preferredName));
     if (match) return match;
   }
-  // Prefer a natural-sounding English female voice
-  const preferred = voices.find(
-    (v) => v.lang.startsWith("en") && v.name.includes("Female")
-  );
-  if (preferred) return preferred;
+  // Try each preferred voice in priority order
+  for (const name of PREFERRED_VOICE_NAMES) {
+    const match = voices.find((v) => v.name.includes(name) && v.lang.startsWith("en"));
+    if (match) return match;
+  }
   // Fallback to first English voice
   return voices.find((v) => v.lang.startsWith("en")) ?? voices[0] ?? null;
 }
@@ -53,8 +64,8 @@ export function speak(
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = getPreferredVoice(options.voice);
     if (voice) utterance.voice = voice;
-    utterance.rate = options.rate ?? 1.0;
-    utterance.pitch = options.pitch ?? 1.0;
+    utterance.rate = options.rate ?? 0.95;
+    utterance.pitch = options.pitch ?? 1.05;
 
     utterance.onstart = () => {
       options.onStateChange("speaking");
